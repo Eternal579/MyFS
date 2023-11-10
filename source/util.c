@@ -5,7 +5,7 @@
 
 #include "util.h"
 
-const char *img_path = "/home/starflow/osExp/MyFS/diskimg";
+const char *img_path = "/home/starflow/osExp/MyFS/source/diskimg";
 struct SuperBlock *k_super_block;
 struct Inode *inodes;
 
