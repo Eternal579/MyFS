@@ -167,7 +167,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 int create_file(const char *path, bool is_dir)
 {
 	int path_len = strlen(path);
-	int s = len - 1;
+	int s = path_len - 1;
 	for(; s >= 0; s--)
 	{
 		if (path[s] == '/')
