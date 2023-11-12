@@ -310,7 +310,45 @@ int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 
 int DistributeIno(ssize_t file_size)
 {
-    return 0;
+	int ino = -1;
+
+	// 先读inode位图
+	struct DataBlock *inode_bitmap = malloc(sizeof(struct DataBlock));
+	if(GetSingleDataBlock(1, inode_bitmap) != 0)
+		fprintf(stderr, "wrong in reading inode bitmap! (func: DistributeIno)");
+	bool stop = false;
+	for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
+	{
+		unsigned int *res = (unsigned int *)(&inode_bitmap->data[i]);
+		unsigned int mask = (1 << 31); int count = 0;
+		while(mask > 0)
+		{
+			if((mask & (*res)) == 0)
+			{
+				stop = true;
+				break;
+			}
+			mask >>= 1; count++;
+		}
+		if(stop) // 找到空的inode了，接下来写回去
+		{
+			*res |= mask;
+			FILE* fp = NULL;
+			if(!(fp = fopen(img_path, "r+")))
+				fprintf(stderr, "file open fail (func: DistributeIno)\n");
+			if (fseek(fp, BLOCK_SIZE * 1, SEEK_SET) != 0) // 将指针移动到文件的第二块的起始位置
+				fprintf(stderr, "bitmap fseek failed! (func: DistributeIno)\n");
+			if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
+				fprintf(stderr, "bitmap fseek failed! (func: DistributeIno)\n");
+			fwrite(res, sizeof(unsigned int), 1, fp); // 已修改inode位图
+			ino = (int)i * 32 + count;
+			break;
+		}	
+	}
+
+	// 已分配好inode号
+	
+    return ino;
 }
 
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino)

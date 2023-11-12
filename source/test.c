@@ -17,6 +17,7 @@ int main(){
     GetSingleDataBlock(1, tmp_record);
     unsigned int *tmp = (unsigned int *)(tmp_record->data);
     printf("aweqwer: %u((()))\n",*tmp);
+    printf("sizeof(unsigned int) is %d\n",sizeof(unsigned int));
 
     GetSingleDataBlock(6, tmp_record);
     struct Inode *tmp_inode = (struct Inode *)(tmp_record->data);
