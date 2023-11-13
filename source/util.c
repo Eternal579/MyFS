@@ -5,9 +5,14 @@
 
 #include "util.h"
 
+FILE *fp;
 const char *img_path = "/home/starflow/osExp/MyFS/source/diskimg";
 struct SuperBlock *k_super_block;
 struct Inode *inodes;
+
+void FilePointerInit() {
+    fp = fopen(img_path, "r+");
+}
 
 ssize_t DivideCeil(ssize_t x, ssize_t y)
 {
@@ -291,7 +296,6 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 
 int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 {
-	FILE *fp = fopen(img_path,"r+");
 	//printf("check3\n");
 	if (fseek(fp, BLOCK_SIZE * bno, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
 	{
@@ -304,7 +308,6 @@ int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 		fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
 		return -1;
 	}
-	fclose(fp);
 	return 0;
 }
 
@@ -333,9 +336,6 @@ short int DistributeIno(ssize_t file_size)
 		if(stop) // 找到空的inode了，接下来写回去
 		{
 			*res |= mask;
-			FILE* fp = NULL;
-			if(!(fp = fopen(img_path, "r+")))
-				fprintf(stderr, "file open fail (func: DistributeIno)\n");
 			if (fseek(fp, BLOCK_SIZE * 1, SEEK_SET) != 0) // 将指针移动到文件的第二块的起始位置
 				fprintf(stderr, "bitmap fseek failed! (func: DistributeIno)\n");
 			if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
@@ -351,10 +351,6 @@ short int DistributeIno(ssize_t file_size)
 	{
 		fprintf(stderr, "error in distributing block no! (func: DistributeIno)");
 	}
-	inodes[ino].st_size = file_size;
-	inodes[ino].st_nlink = '2';
-	inodes[ino].ino = ino;
-	
     return ino;
 }
 
@@ -365,9 +361,6 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 
 int DistributeBlockNo(ssize_t file_size, int ino)
 {
-	FILE* fp = NULL;
-	if(!(fp = fopen(img_path, "r+")))
-		fprintf(stderr, "file open fail (func: DistributeBlockNo)\n");
 
 	// 先读block位图
 	struct DataBlock *block_bitmap = malloc(sizeof(struct DataBlock));
@@ -378,7 +371,7 @@ int DistributeBlockNo(ssize_t file_size, int ino)
 		bool stop = false;
 		for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
 		{
-			unsigned int *res = (unsigned int *)(&inode_bitmap->data[i]);
+			unsigned int *res = (unsigned int *)(&block_bitmap->data[i]);
 			unsigned int mask = (1 << 31); int count = 0;
 			while(mask > 0)
 			{
@@ -397,8 +390,20 @@ int DistributeBlockNo(ssize_t file_size, int ino)
 					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
 				if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
 					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
-				fwrite(res, sizeof(unsigned int), 1, fp); // 已修改inode位图
-				inodes[ino].addr[0] = (short int)i * 32 + (short int)count;
+				fwrite(res, sizeof(unsigned int), 1, fp); // 已修改block位图
+				
+				// 修改inodes全局变量
+				inodes[ino].st_size = file_size;
+				inodes[ino].st_nlink = '2';
+				inodes[ino].st_ino = ino;
+				inodes[ino].addr[0] = (short int)i * 32 + (short int)count; 
+
+				// 把修改的inodes写进diskimg
+				if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
+					fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
+				if (fseek(fp, ino * sizeof(struct Inode), SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
+					fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
+				fwrite(&inodes[ino], sizeof(struct Inode), 1, fp); // 已修改inode区
 				return 0;
 			}	
 		}

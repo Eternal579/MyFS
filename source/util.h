@@ -52,10 +52,12 @@ struct DataBlock {
     char data[BLOCK_SIZE];
 };
 
+extern FILE *fp;
 extern const char *img_path;
 extern struct SuperBlock *k_super_block; // k前缀表示常值不变
 extern struct Inode *inodes; // 将所有的inode缓存在内存中（占用内存256KB），加快读取速度。
 
+void FilePointerInit();
 int GetSingleDirTuple(const char * path, struct DirTuple *dir_tuple); // 根据path来获取所对应的单个目录项
 struct DirTuple* GetMultiDirTuples(const int Ino); // 根据Ino来获取目录的全部目录项（主要是为了处理有间址的情况）
 int GetSingleDataBlock(const int bno, struct DataBlock *d_block); // 根据bno块号（从0开始）来读取一块到d_block

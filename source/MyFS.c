@@ -22,16 +22,12 @@
 */
 static void *bugeater_init(struct fuse_conn_info *conn, struct fuse_config *cfg) 
 {
+	FilePointerInit();
+
     printf("\nbugeater_init() called!\n");
 	(void) conn;
 	cfg->kernel_cache = 1; // 启用内核缓存，提高文件系统性能
 
-    FILE * fp = NULL;
-	fp = fopen(img_path, "r+");
-	if (fp == NULL) {
-		fprintf(stderr, "file open fail\n");
-		return;
-	}
 	/* 处理与超级块有关的信息 */
     k_super_block = malloc(sizeof(struct SuperBlock));
     fread(k_super_block,sizeof(struct SuperBlock),1,fp);
@@ -41,7 +37,6 @@ static void *bugeater_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
         fprintf(stderr, "inodes fseek failed! (func: bugeater_init)\n");
 	inodes = malloc(sizeof(struct Inode) * 4096);
 	fread(inodes,sizeof(struct Inode),4096,fp);
-    fclose(fp);
 
     printf("bugeater_init() called successfully!\n");
 	return NULL;

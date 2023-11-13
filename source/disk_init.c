@@ -10,10 +10,7 @@
 #include "util.h"
 
 int main(){
-    FILE* fp = NULL;
-    if(!(fp = fopen(img_path, "r+"))){
-          fprintf(stderr, "file open fail\n");
-    }
+    FilePointerInit();
 
     // 1.超级块初始化
     struct SuperBlock *super_blk = malloc(sizeof(struct SuperBlock));
