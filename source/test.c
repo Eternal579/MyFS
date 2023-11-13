@@ -5,7 +5,7 @@
 #include "util.h"
 
 int main(){
-    FILE *fp = fopen("diskimg","r+");
+    FilePointerInit();
     struct DataBlock *tmp_record = malloc(sizeof(struct DataBlock));
 
     GetSingleDataBlock(ROOT_DIR_TUPLE_BNO, tmp_record);

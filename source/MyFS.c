@@ -72,6 +72,7 @@ static void *bugeater_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 static int bugeater_getattr(const char *path, struct stat *stbuf)
 {
     printf("\nbugeater_getattr() called!\n");
+	printf("path is %s\n", path);
 	int res = 0;
 	struct DirTuple *dir_tuple = malloc(sizeof(struct DirTuple));
 
@@ -98,9 +99,7 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 		}
 	}
 	else
-	{
-		fprintf(stderr, "path not in file system! (func: bugeater_getattr)\n");
-	}
+		res = -ENOENT;
 	free(dir_tuple);
 
     printf("bugeater_getattr() called successfully!\n");
@@ -169,7 +168,9 @@ int create_file(const char *path, bool is_dir)
 			break;
 	}
 	char parent_path[path_len]; // 父目录的路径
-	strncpy(parent_path, path, s + 1);
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	printf("parent_path is %s\n", parent_path);
 
 	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
 	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
@@ -199,12 +200,14 @@ int create_file(const char *path, bool is_dir)
 		}
 	}
 
+	//printf("check1\n");
 	// 可以确认regular或dir均不在父文件夹下
 	int target_ino;
 	if(is_dir)
-		target_ino = DistributeIno(DEFAULT_DIR_SIZE); // 分配inode号
+		target_ino = DistributeIno(DEFAULT_DIR_SIZE, is_dir); // 分配inode号
 	else
-		target_ino = DistributeIno(0L); // 分配inode号
+		target_ino = DistributeIno(0L, is_dir); // 分配inode号
+	//printf("check2\n");
 	if(AddToParentDir(parent_ino, target, target_ino) != 0){
 		fprintf(stderr, "something wrong when adding target to parent dir! (func: create_file)");
 	}
@@ -213,7 +216,12 @@ int create_file(const char *path, bool is_dir)
 //创建目录
 static int bugeater_mkdir(const char *path, mode_t mode)
 {
+	printf("\nbugeater_mkdir called!\n");
 	printf("path is %s\n", path);
+	
+	if (create_file(path, true) != 0)
+		return -1;
+	printf("bugeater_mkdir called successfully!\n");
 	return 0;
 }
 

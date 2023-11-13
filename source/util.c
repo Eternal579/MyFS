@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 
 #include "util.h"
@@ -35,9 +36,11 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 	off_t cur_size = inodes[root_tuple->i_num].st_size;
 	//printf("already get root tuple: %s\n",root_tuple->f_name);
 
+	//printf("path is %s&&&\n", path);
 	if(strcmp(path, "/") == 0)
 	{
 		*dir_tuple = *root_tuple;
+		//printf("hello\n");
 		return 0;
 	}
 	else
@@ -118,7 +121,7 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 */
 struct DirTuple *GetMultiDirTuples(const int Ino)
 {
-	printf("\ncall GetMultiDirTuples()");
+	printf("\ncall GetMultiDirTuples()\n");
 	//printf("Ino = %d\n",Ino);
 
 	struct DataBlock *tuples_block = malloc(sizeof(struct DataBlock));
@@ -290,19 +293,19 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 			}
 		}
 	}
-	printf("\n");
+	printf("call GetMultiDirTuples() successfully!\n");
 	return tuples;
 }
 
 int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 {
-	//printf("check3\n");
+	printf("check3\n");
 	if (fseek(fp, BLOCK_SIZE * bno, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
 	{
         fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
 		return -1;
 	}
-	//printf("check4\n");
+	printf("check4\n");
 	if(fread(d_block,sizeof(struct DataBlock),1,fp) == 0)
 	{
 		fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
@@ -311,8 +314,9 @@ int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 	return 0;
 }
 
-short int DistributeIno(ssize_t file_size)
+short int DistributeIno(ssize_t file_size, bool is_dir)
 {
+	printf("check1\n");
 	short int ino = -1;
 
 	// 先读inode位图
@@ -320,6 +324,7 @@ short int DistributeIno(ssize_t file_size)
 	if(GetSingleDataBlock(1, inode_bitmap) != 0)
 		fprintf(stderr, "wrong in reading inode bitmap! (func: DistributeIno)");
 	bool stop = false;
+	printf("check2\n");
 	for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
 	{
 		unsigned int *res = (unsigned int *)(&inode_bitmap->data[i]);
@@ -329,6 +334,7 @@ short int DistributeIno(ssize_t file_size)
 			if((mask & (*res)) == 0)
 			{
 				stop = true;
+				printf("*res = %u\n", *res);
 				break;
 			}
 			mask >>= 1; count++;
@@ -346,8 +352,10 @@ short int DistributeIno(ssize_t file_size)
 		}	
 	}
 
+	printf("check3\n");
+	printf("ino is %d\n",ino);
 	// 已分配好inode号，接下来要分配数据块
-	if(DistributeBlockNo(file_size, ino) != 0)
+	if(DistributeBlockNo(file_size, ino, is_dir) != 0)
 	{
 		fprintf(stderr, "error in distributing block no! (func: DistributeIno)");
 	}
@@ -356,18 +364,24 @@ short int DistributeIno(ssize_t file_size)
 
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino)
 {
+	inodes[parent_ino].nlink = inodes[parent_ino].nlink + '1';
+	inodes[parent_ino].st_size += 16L;
+
+	
+
     return 0;
 }
 
-int DistributeBlockNo(ssize_t file_size, int ino)
+int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 {
-
+	printf("check4\n");
 	// 先读block位图
 	struct DataBlock *block_bitmap = malloc(sizeof(struct DataBlock));
 	for(int k = 2; k < 6; k++)
 	{
 		if(GetSingleDataBlock(k, block_bitmap) != 0)
 			fprintf(stderr, "wrong in reading block bitmap! (func: DistributeBlockNo)");
+		printf("check5\n");
 		bool stop = false;
 		for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
 		{
@@ -377,6 +391,7 @@ int DistributeBlockNo(ssize_t file_size, int ino)
 			{
 				if((mask & (*res)) == 0)
 				{
+					printf("*res = %u\n", *res);
 					stop = true;
 					break;
 				}
@@ -384,8 +399,8 @@ int DistributeBlockNo(ssize_t file_size, int ino)
 			}
 			if(stop) // 找到空的block了，接下来写回去
 			{
+				printf("check6\n");
 				*res |= mask;
-				FILE* fp = NULL;
 				if (fseek(fp, BLOCK_SIZE * k, SEEK_SET) != 0) // 将指针移动到文件的第k块的起始位置
 					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
 				if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
@@ -393,6 +408,10 @@ int DistributeBlockNo(ssize_t file_size, int ino)
 				fwrite(res, sizeof(unsigned int), 1, fp); // 已修改block位图
 				
 				// 修改inodes全局变量
+				if(is_dir)
+					inodes[ino].mode = __S_IFDIR | 0755;
+				else
+					inodes[ino].mode = __S_IFREG | 0755;
 				inodes[ino].st_size = file_size;
 				inodes[ino].st_nlink = '2';
 				inodes[ino].st_ino = ino;
