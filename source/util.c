@@ -308,9 +308,9 @@ int GetSingleDataBlock(const int bno, struct DataBlock *d_block)
 	return 0;
 }
 
-int DistributeIno(ssize_t file_size)
+short int DistributeIno(ssize_t file_size)
 {
-	int ino = -1;
+	short int ino = -1;
 
 	// 先读inode位图
 	struct DataBlock *inode_bitmap = malloc(sizeof(struct DataBlock));
@@ -341,12 +341,19 @@ int DistributeIno(ssize_t file_size)
 			if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
 				fprintf(stderr, "bitmap fseek failed! (func: DistributeIno)\n");
 			fwrite(res, sizeof(unsigned int), 1, fp); // 已修改inode位图
-			ino = (int)i * 32 + count;
+			ino = (short int)i * 32 + (short int)count;
 			break;
 		}	
 	}
 
-	// 已分配好inode号
+	// 已分配好inode号，接下来要分配数据块
+	if(DistributeBlockNo(file_size, ino) != 0)
+	{
+		fprintf(stderr, "error in distributing block no! (func: DistributeIno)");
+	}
+	inodes[ino].st_size = file_size;
+	inodes[ino].st_nlink = '2';
+	inodes[ino].ino = ino;
 	
     return ino;
 }
@@ -354,4 +361,47 @@ int DistributeIno(ssize_t file_size)
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino)
 {
     return 0;
+}
+
+int DistributeBlockNo(ssize_t file_size, int ino)
+{
+	FILE* fp = NULL;
+	if(!(fp = fopen(img_path, "r+")))
+		fprintf(stderr, "file open fail (func: DistributeBlockNo)\n");
+
+	// 先读block位图
+	struct DataBlock *block_bitmap = malloc(sizeof(struct DataBlock));
+	for(int k = 2; k < 6; k++)
+	{
+		if(GetSingleDataBlock(k, block_bitmap) != 0)
+			fprintf(stderr, "wrong in reading block bitmap! (func: DistributeBlockNo)");
+		bool stop = false;
+		for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
+		{
+			unsigned int *res = (unsigned int *)(&inode_bitmap->data[i]);
+			unsigned int mask = (1 << 31); int count = 0;
+			while(mask > 0)
+			{
+				if((mask & (*res)) == 0)
+				{
+					stop = true;
+					break;
+				}
+				mask >>= 1; count++;
+			}
+			if(stop) // 找到空的block了，接下来写回去
+			{
+				*res |= mask;
+				FILE* fp = NULL;
+				if (fseek(fp, BLOCK_SIZE * k, SEEK_SET) != 0) // 将指针移动到文件的第k块的起始位置
+					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
+				if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
+					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
+				fwrite(res, sizeof(unsigned int), 1, fp); // 已修改inode位图
+				inodes[ino].addr[0] = (short int)i * 32 + (short int)count;
+				return 0;
+			}	
+		}
+	}
+	return -1; // 已满，无法分配数据块
 }

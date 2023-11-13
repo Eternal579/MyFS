@@ -204,7 +204,7 @@ int create_file(const char *path, bool is_dir)
 		}
 	}
 
-	// 可以确认regular和dir均不在父文件夹下
+	// 可以确认regular或dir均不在父文件夹下
 	int target_ino;
 	if(is_dir)
 		target_ino = DistributeIno(DEFAULT_DIR_SIZE); // 分配inode号
