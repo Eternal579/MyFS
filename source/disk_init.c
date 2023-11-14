@@ -58,7 +58,7 @@ int main(){
     inode_table[0].st_mode = __S_IFDIR | 0755; // 此inode的st_mode说明为一个文件夹（目录）
     //printf("root dir's mode is %d\n",inode_table[0].st_mode); // 输出16877
     inode_table[0].st_ino = 0;
-    inode_table[0].st_nlink = '1'; // 根目录没有父文件夹，只有一个指向自身的目录项
+    inode_table[0].st_nlink = 1; // 根目录没有父文件夹，只有一个指向自身的目录项
     inode_table[0].st_uid = 579;
     inode_table[0].st_gid = 768288;
     inode_table[0].st_size = 16; // 刚开始只有一个指向自身的目录项，故占16字节

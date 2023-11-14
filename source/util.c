@@ -117,26 +117,26 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 
 /**
  * 一个数据块512字节，一个目录项16字节，一个数据块能存最多32个目录项
- * Ino是该目录的inode号
+ * ino是该目录的inode号
 */
-struct DirTuple *GetMultiDirTuples(const int Ino)
+struct DirTuple *GetMultiDirTuples(const int ino)
 {
 	printf("\ncall GetMultiDirTuples()\n");
-	//printf("Ino = %d\n",Ino);
+	//printf("ino = %d\n",ino);
 
 	struct DataBlock *tuples_block = malloc(sizeof(struct DataBlock));
-	off_t dir_size = inodes[Ino].st_size; // 此目录的文件大小
+	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
 	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * dir_size / sizeof(struct DirTuple));
 	ssize_t offset = sizeof(struct DirTuple); 
 	off_t base = 0; // 每次cp时的基准偏移量 <=> 目前已读的大小
 	for(int i = 0; i < 7; i++)
 	{
-		if(inodes[Ino].addr[i] == -1)
+		if(inodes[ino].addr[i] == -1)
 			break;
 		if(base == dir_size)
 			break;
 		//printf("check1\n");	
-		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[Ino].addr[i] + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
+		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 		{
 			//printf("check2\n");
 			ssize_t tuple_no = 0; 
@@ -144,7 +144,7 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 			while(tuple_no < cur_size / offset)
 			{
 				// printf("check3\n");
-				// printf("inodes[Ino].addr[i] = %d\n", inodes[Ino].addr[i]);
+				// printf("inodes[ino].addr[i] = %d\n", inodes[ino].addr[i]);
 				memcpy(tuples + base + tuple_no * offset, &tuples_block->data[0] + tuple_no * offset, sizeof(struct DirTuple));
 				tuple_no++;
 			}
@@ -159,11 +159,11 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 
 			ssize_t file_size = (dir_size - DIRECT_ADDRESS_SCOPE < PRIMARY_ADDRESS_SCOPE) ? dir_size - DIRECT_ADDRESS_SCOPE 
 			: PRIMARY_ADDRESS_SCOPE; // 表示1级间址存的文件的大小
-			ssize_t blocks_cnt_1 = DivideCeil(file_size, 512); // 表示1级间址对应多少个数据块
+			ssize_t blocks_cnt_1 = DivideCeil(file_size, 512L); // 表示1级间址对应多少个数据块
 
 			// 存着blocks_cnt_1个short int类型的数字（用于表示叶子数据块号）
 			struct DataBlock *primary_dblock = malloc(sizeof(struct DataBlock)); 
-			if(GetSingleDataBlock(inodes[Ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
+			if(GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
 			{
 				fprintf(stderr, "something wrong in primary address! (func: GetMultiDirTuples)");
 			}
@@ -191,11 +191,11 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 			ssize_t file_size = (dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE < SECONDARY_ADDRESS_SCOPE) ? 
 			dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE 
 			: SECONDARY_ADDRESS_SCOPE;  // 表示2级间址存的文件的大小
-			ssize_t blocks_cnt_1 = DivideCeil(file_size, 512 * 512); // 表示1级间址对应多少个数据块
+			ssize_t blocks_cnt_1 = DivideCeil(file_size, 256L * 512L); // 表示1级间址对应多少个数据块
 
 			// 存着blocks_cnt_1个short int类型的数字（用于表示2级间址的数据块号）
 			struct DataBlock *primary_dblock = malloc(sizeof(struct DataBlock)); 
-			if(GetSingleDataBlock(inodes[Ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
+			if(GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
 			{
 				fprintf(stderr, "something wrong in primary address! (func: GetMultiDirTuples)");
 			}
@@ -210,7 +210,7 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 				{
 					fprintf(stderr, "something wrong in secondary address! (func: GetMultiDirTuples)");
 				}
-				ssize_t blocks_cnt_2 = (j < blocks_cnt_1) ? 512 : DivideCeil(file_size - (blocks_cnt_1 - 1) * 512L * 512L, 512L);
+				ssize_t blocks_cnt_2 = (j < blocks_cnt_1) ? 512 : DivideCeil(file_size - (blocks_cnt_1 - 1) * 256L * 512L, 512L);
 
 				for(ssize_t k = 0; k < blocks_cnt_2; k++)
 				{
@@ -237,11 +237,11 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 			ssize_t file_size = (dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE - SECONDARY_ADDRESS_SCOPE < TRIPLE_ADDRESS_SCOPE) ? 
 			dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE - SECONDARY_ADDRESS_SCOPE 
 			: TRIPLE_ADDRESS_SCOPE;  // 表示3级间址存的文件的大小
-			ssize_t blocks_cnt_1 = DivideCeil(file_size, 512 * 512 * 512); // 表示1级间址对应多少个数据块
+			ssize_t blocks_cnt_1 = DivideCeil(file_size, 256L * 256L * 512L); // 表示1级间址对应多少个数据块
 
 			// 存着blocks_cnt_1个short int类型的数字（用于表示2级间址的数据块号）
 			struct DataBlock *primary_dblock = malloc(sizeof(struct DataBlock)); 
-			if(GetSingleDataBlock(inodes[Ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
+			if(GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
 			{
 				fprintf(stderr, "something wrong in primary address! (func: GetMultiDirTuples)");
 			}
@@ -257,7 +257,7 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 					fprintf(stderr, "something wrong in secondary address! (func: GetMultiDirTuples)");
 				}
 				ssize_t blocks_cnt_2 = (j < blocks_cnt_1) ? 512 : 
-					DivideCeil(file_size - (blocks_cnt_1 - 1) * 512L * 512L * 512L, 512L * 512L);
+					DivideCeil(file_size - (blocks_cnt_1 - 1) * 256L * 256L * 512L, 256L * 512L);
 
 				for(ssize_t k = 0; k < blocks_cnt_2; k++)
 				{
@@ -269,9 +269,8 @@ struct DirTuple *GetMultiDirTuples(const int Ino)
 					{
 						fprintf(stderr, "something wrong in triple address! (func: GetMultiDirTuples)");
 					}
-					// todo
 					ssize_t blocks_cnt_3 = (k < blocks_cnt_2) ? 512 : 
-						DivideCeil(file_size - (j * 512L + blocks_cnt_2 - 1) * 512L * 512L, 512L);
+						DivideCeil(file_size - (j * 512L + blocks_cnt_2 - 1) * 256L * 512L, 512L);
 
 					for(ssize_t p = 0; p < blocks_cnt_3; p++)
 					{
@@ -364,10 +363,10 @@ short int DistributeIno(ssize_t file_size, bool is_dir)
 
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino)
 {
-	inodes[parent_ino].nlink = inodes[parent_ino].nlink + '1';
-	inodes[parent_ino].st_size += 16L;
-
 	
+
+	inodes[parent_ino].st_nlink = inodes[parent_ino].st_nlink + 1;
+	inodes[parent_ino].st_size += 16L;
 
     return 0;
 }
@@ -409,11 +408,11 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 				
 				// 修改inodes全局变量
 				if(is_dir)
-					inodes[ino].mode = __S_IFDIR | 0755;
+					inodes[ino].st_mode = __S_IFDIR | 0755;
 				else
-					inodes[ino].mode = __S_IFREG | 0755;
+					inodes[ino].st_mode = __S_IFREG | 0744;
 				inodes[ino].st_size = file_size;
-				inodes[ino].st_nlink = '2';
+				inodes[ino].st_nlink = 2;
 				inodes[ino].st_ino = ino;
 				inodes[ino].addr[0] = (short int)i * 32 + (short int)count; 
 
@@ -428,4 +427,46 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 		}
 	}
 	return -1; // 已满，无法分配数据块
+}
+
+ssize_t *GetLastTupleByIno(int ino)
+{
+	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
+	off_t count = dir_size / sizeof(struct DirTuple); // 一共有多少目录项
+
+	ssize_t res[5];
+	if(dir_size >= 0 && dir_size <= DIRECT_ADDRESS_SCOPE)
+	{
+		res[0] = (count - 1L) / 32L;
+		res[1] = (count - 1L) % 32L;
+	}
+	else if(dir_size > DIRECT_ADDRESS_SCOPE && dir_size <= DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE)
+	{
+		ssize_t file_size = dir_size - DIRECT_ADDRESS_SCOPE; // 表示1级间址存的文件的大小
+		res[0] = 4;
+		res[1] = DivideCeil(file_size, 512L);
+		res[2] = count - 4L * 32L - (res[1] - 1L) * 32L;
+	}
+	else if(dir_size > DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE && dir_size <= DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE + SECONDARY_ADDRESS_SCOPE)
+	{
+		ssize_t file_size = dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE; // 表示2级间址存的文件的大小
+		res[0] = 5;
+		res[1] = DivideCeil(file_size, 256L * 512L);
+		res[2] = DivideCeil(file_size - (res[1] - 1L) * 256L * 512L, 512L);
+		res[3] = count - 4L *32L - 256L * 32L - (res[1] - 1L) * 256L * 32L - (res[2] - 1L) * 32L;
+	}
+	else if(dir_size > DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE + SECONDARY_ADDRESS_SCOPE&& dir_size <= DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE + SECONDARY_ADDRESS_SCOPE + TRIPLE_ADDRESS_SCOPE)
+	{
+		ssize_t file_size = dir_size - DIRECT_ADDRESS_SCOPE - PRIMARY_ADDRESS_SCOPE - TRIPLE_ADDRESS_SCOPE; // 表示3级间址存的文件的大小
+		res[0] = 6;
+		res[1] = DivideCeil(file_size, 256L * 256L * 512L);
+		res[2] = DivideCeil(file_size - (res[1] - 1L) * 256L * 256L * 512L, 256L * 512L);
+		res[3] = DivideCeil(file_size - (res[1] - 1L) * 256L * 256L * 512L - (res[2] - 1L) * 256L * 512L, 512L);
+		res[4] = count - 4L *32L - 256L * 32L - (res[1] - 1L) * 256L * 256L * 32L - (res[2] - 1L) * 256L * 32L - (res[3] - 1L) * 32L;
+	}
+	else
+	{
+		return NULL;
+	}
+	return res;
 }

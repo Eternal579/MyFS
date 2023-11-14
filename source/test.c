@@ -22,5 +22,10 @@ int main(){
     GetSingleDataBlock(6, tmp_record);
     struct Inode *tmp_inode = (struct Inode *)(tmp_record->data);
     printf("%d\n",tmp_inode->st_uid);
+    printf("sizeof(struct Inode) is %d\n", sizeof(struct Inode));
+
+    int arr[5] = {1,2,3,4,5};
+    int sz = sizeof(arr) / sizeof(int);
+    printf("sz is %d\n", sz);
     return 0;
 }
