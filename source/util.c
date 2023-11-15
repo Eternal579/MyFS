@@ -146,12 +146,11 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 struct DirTuple *GetMultiDirTuples(const int ino)
 {
 	printf("call GetMultiDirTuples()\n");
-	//printf("ino = %d\n",ino);
+	printf("ino = %d\n",ino);
 
 	struct DataBlock *tuples_block = malloc(sizeof(struct DataBlock));
 	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
-	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * dir_size / sizeof(struct DirTuple));
-	ssize_t offset = sizeof(struct DirTuple); 
+	struct DirTuple *tuples = malloc(dir_size);
 	off_t base = 0; // 每次cp时的基准偏移量 <=> 目前已读的大小
 	for(int i = 0; i < 7; i++)
 	{
@@ -159,23 +158,26 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 			break;
 		if(base == dir_size)
 			break;
-		//printf("check1\n");	
+		printf("check1\n");	
 		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 		{
-			//printf("check2\n");
-			ssize_t tuple_no = 0; 
+			printf("check2\n");
+			//ssize_t tuple_no = 0; 
 			ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-			while(tuple_no < cur_size / offset)
-			{
-				// printf("check3\n");
-				// printf("inodes[ino].addr[i] = %d\n", inodes[ino].addr[i]);
-				memcpy(tuples + base + tuple_no * offset, &tuples_block->data[0] + tuple_no * offset, sizeof(struct DirTuple));
-				tuple_no++;
-			}
+			// while(tuple_no < cur_size / offset)
+			// {
+			// 	printf("check3\n");
+			// 	printf("inodes[ino].addr[i] = %d\n", inodes[ino].addr[i]);
+			// 	memcpy(tuples + base + tuple_no * offset, tuples_block->data + tuple_no * offset, sizeof(struct DirTuple));
+			// 	printf("check4\n");
+			// 	printf("tuple[%d]'s name = %s\n", tuple_no, tuples[tuple_no].f_name);
+			// 	tuple_no++;
+			// }
+			memcpy(tuples + base, tuples_block, cur_size);
+			printf("tuple[%d]'s name = %s\n", 0, tuples[0].f_name);
+			printf("tuple[%d]'s name = %s\n", 1, tuples[1].f_name);
 			base += cur_size; 
-			// printf("check4\n");
-			// printf("base = %ld\n", base);
-			// printf("tuple's name = %s\n",tuples->f_name);
+			printf("base = %ld\n", base);
 		}
 		else if(i == 4) // 1级间址
 		{ 
@@ -197,13 +199,14 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 				short int *block_no_1 = (short int *)(primary_dblock + j * sizeof(short int));
 				if(GetSingleDataBlock(*block_no_1 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0)
 				{
-					ssize_t tuple_no = 0; 
+					//ssize_t tuple_no = 0; 
 					ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-					while(tuple_no < cur_size / offset)
-					{
-						memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
-						tuple_no++;
-					}
+					// while(tuple_no < cur_size / offset)
+					// {
+					// 	memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
+					// 	tuple_no++;
+					// }
+					memcpy(tuples + base, tuples_block, cur_size);
 					base += cur_size;
 				}
 			}
@@ -242,13 +245,14 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 					short int *block_no_2 = (short int *)(secondary_dblock + k * sizeof(short int));
 					if(GetSingleDataBlock(*block_no_2 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
 					{
-						ssize_t tuple_no = 0; 
+						//ssize_t tuple_no = 0; 
 						ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-						while(tuple_no < cur_size / offset)
-						{
-							memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
-							tuple_no++;
-						}
+						// while(tuple_no < cur_size / offset)
+						// {
+						// 	memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
+						// 	tuple_no++;
+						// }
+						memcpy(tuples + base, tuples_block, cur_size);
 						base += cur_size;
 					}
 				}
@@ -302,13 +306,14 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 						short int *block_no_3 = (short int *)(triple_dblock + p * sizeof(short int));
 						if(GetSingleDataBlock(*block_no_3 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
 						{
-							ssize_t tuple_no = 0; 
+							//ssize_t tuple_no = 0; 
 							ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-							while(tuple_no < cur_size / offset)
-							{
-								memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
-								tuple_no++;
-							}
+							// while(tuple_no < cur_size / offset)
+							// {
+							// 	memcpy(tuples + base + tuple_no * offset, tuples_block + tuple_no * offset, sizeof(struct DirTuple));
+							// 	tuple_no++;
+							// }
+							memcpy(tuples + base, tuples_block, cur_size);
 							base += cur_size;
 						}
 					}
@@ -431,6 +436,16 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 			printf("new_tuple->f_name is %s\n", new_tuple->f_name);
 			printf("new_tuple->f_ext is %s\n", new_tuple->f_ext);
 			printf("check7\n");
+
+			// struct DataBlock *tmp = malloc(sizeof(struct DataBlock));
+			// GetSingleDataBlock(ROOT_DIR_TUPLE_BNO, tmp);
+			// struct DirTuple *t1 = malloc(sizeof(struct DirTuple));
+			// memcpy(t1, tmp->data, sizeof(struct DirTuple));
+			// struct DirTuple *t2 = malloc(sizeof(struct DirTuple));
+			// memcpy(t2, tmp->data + sizeof(struct DirTuple), sizeof(struct DirTuple));
+			// printf("t1->f_name is %s\n", t1->f_name);
+			// printf("t2->f_name is %s\n", t2->f_name);
+
 			free(new_tuple);
 			printf("check8\n");
 		}

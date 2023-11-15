@@ -142,6 +142,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 
 	ssize_t count = inodes[path_dirtuple->i_num].st_size / sizeof(struct DirTuple); // 表示有多少个目录项
 	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
+	printf("count is %d\n", count);
 	tuples = GetMultiDirTuples(path_dirtuple->i_num);
 
 	printf("directory %s has %ld tuples\n", path, count);
