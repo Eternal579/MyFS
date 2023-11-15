@@ -26,7 +26,7 @@ static void *bugeater_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 
     printf("\nbugeater_init() called!\n");
 	(void) conn;
-	cfg->kernel_cache = 1; // 启用内核缓存，提高文件系统性能
+	//cfg->kernel_cache = 1; // 启用内核缓存，提高文件系统性能
 
 	/* 处理与超级块有关的信息 */
     k_super_block = malloc(sizeof(struct SuperBlock));
@@ -142,7 +142,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 
 	ssize_t count = inodes[path_dirtuple->i_num].st_size / sizeof(struct DirTuple); // 表示有多少个目录项
 	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
-	printf("count is %d\n", count);
+	//printf("count is %d\n", count);
 	tuples = GetMultiDirTuples(path_dirtuple->i_num);
 
 	printf("directory %s has %ld tuples\n", path, count);
@@ -216,7 +216,31 @@ int create_file(const char *path, bool is_dir)
 	else
 		target_ino = DistributeIno(0L, is_dir); // 分配inode号
 	//printf("check2\n");
-	if(AddToParentDir(parent_ino, target, target_ino) != 0){
+
+	// 为新建文件夹的数据块创造两条默认目录项
+	if(is_dir)
+	{
+		printf("Now! create default tuples for %s, whose ino is %d\n",target, target_ino);
+		if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
+			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
+
+		struct DirTuple *default_tuple1 = malloc(sizeof(struct DirTuple));
+		strncpy(default_tuple1->f_name, ".", 8);
+		memset(default_tuple1->f_ext, 0, sizeof(default_tuple1->f_ext));
+		default_tuple1->i_num = target_ino;
+		memset(default_tuple1->spare, 0, sizeof(default_tuple1->spare));
+		fwrite(default_tuple1, sizeof(struct DirTuple), 1, fp);
+
+		struct DirTuple *default_tuple2 = malloc(sizeof(struct DirTuple));
+		strncpy(default_tuple2->f_name, "..", 8);
+		memset(default_tuple2->f_ext, 0, sizeof(default_tuple1->f_ext));
+		default_tuple2->i_num = parent_ino;
+		memset(default_tuple2->spare, 0, sizeof(default_tuple1->spare));
+		fwrite(default_tuple2, sizeof(struct DirTuple), 1, fp);
+	}
+
+	if(AddToParentDir(parent_ino, target, target_ino) != 0) // 添加一条记录到父目录中
+	{
 		fprintf(stderr, "something wrong when adding target to parent dir! (func: create_file)");
 	}
 }
