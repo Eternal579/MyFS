@@ -4,17 +4,9 @@
 #include <string.h>
 #include "util.h"
 
-int *func(){
-    int arr[2] = {1,2};
-    return arr;
-}
-
 int main(){
-    int *tmp = malloc(sizeof(int) * 2);
-    tmp = func();
-    printf("%d\n",tmp[0]);
-    // FilePointerInit();
-    // struct DataBlock *tmp_record = malloc(sizeof(struct DataBlock));
+    FilePointerInit();
+    //struct DataBlock *tmp_record = malloc(sizeof(struct DataBlock));
 
     // GetSingleDataBlock(ROOT_DIR_TUPLE_BNO, tmp_record);
     // struct DirTuple *tuple = (struct DirTuple *)(tmp_record->data);
@@ -35,5 +27,29 @@ int main(){
     // int arr[5] = {1,2,3,4,5};
     // int sz = sizeof(arr) / sizeof(int);
     // printf("sz is %d\n", sz);
+
+    if (fseek(fp, 0, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+	{
+        fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
+		return -1;
+	}
+    // int tmp = 579;
+    // fwrite(&tmp, sizeof(int), 1, fp);
+    // while(1)
+    // {
+        
+    // }
+    //fclose(fp);
+    // if (fseek(fp, 0, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+	// {
+    //     fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
+	// 	return -1;
+	// }
+    int *q = malloc(sizeof(int));
+    if(fread(q, sizeof(int), 1, fp) == 0)
+        fprintf(stderr, "error");
+    printf("### %d\n", *q);
+    fclose(fp);
+
     return 0;
 }
