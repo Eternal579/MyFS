@@ -86,12 +86,14 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 			stbuf->st_mode = __S_IFDIR | 0755; // 755表示owner拥有rwx权限，而group和其他只有rx权限
 			stbuf->st_size = inodes[dir_tuple->i_num].st_size;
 			stbuf->st_nlink = inodes[dir_tuple->i_num].st_nlink;
+			printf("it's a DIR\n");
 		}
 		else if(inodes[dir_tuple->i_num].st_mode & __S_IFREG) // 是个文件
 		{
 			stbuf->st_mode = __S_IFREG | 0744; 
 			stbuf->st_size = inodes[dir_tuple->i_num].st_size;
 			stbuf->st_nlink = inodes[dir_tuple->i_num].st_nlink;
+			printf("it's a REG\n");
 		}
 		else
 		{
@@ -99,7 +101,11 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 		}
 	}
 	else
+	{
 		res = -ENOENT;
+		printf("No such REG or DIR\n");
+	}
+		
 	free(dir_tuple);
 
     printf("bugeater_getattr() called successfully!\n");
@@ -143,6 +149,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 	// 在我自定义的目录结构里也是有"."和".."的	
 	for(int i = 0; i < count; i++)
 	{
+		printf("## %s ##\n", tuples[i].f_name);
 		char name[16];
 		strcpy(name, tuples[i].f_name);
 		if (strlen(tuples[i].f_ext) != 0)
@@ -170,7 +177,7 @@ int create_file(const char *path, bool is_dir)
 	char parent_path[path_len]; // 父目录的路径
 	strncpy(parent_path, path, s + 1); 
 	parent_path[s + 1] = '\0';
-	printf("parent_path is %s\n", parent_path);
+	//printf("parent_path is %s\n", parent_path);
 
 	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
 	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
@@ -217,7 +224,7 @@ int create_file(const char *path, bool is_dir)
 static int bugeater_mkdir(const char *path, mode_t mode)
 {
 	printf("\nbugeater_mkdir called!\n");
-	printf("path is %s\n", path);
+	//printf("path is %s\n", path);
 	
 	if (create_file(path, true) != 0)
 		return -1;
