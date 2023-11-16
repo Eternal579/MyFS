@@ -178,8 +178,34 @@ static int bugeater_mkdir(const char *path, mode_t mode)
 	return 0;
 }
 
-void *bugeater_rmdir(){
-    
+static int *bugeater_rmdir(const char *path){
+    printf("\nbugeater_rmdir called!\n");
+	printf("path is %s\n", path);
+	
+	if(strcmp(path, "/") == 0)
+	{
+		fprintf(stderr, "not allowed to delete root directory! (func: bugeater_rmdir)");
+		return -1;
+	}
+
+	int path_len = strlen(path);
+	int s = path_len - 1;
+	for(; s >= 0; s--)
+	{
+		if (path[s] == '/')
+			break;
+	}
+	char parent_path[path_len]; // 父目录的路径
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	//printf("parent_path is %s\n", parent_path);
+	char target[path_len - s];
+	strcpy(target, path + s + 1);
+
+	if (remove_file(parent_path, target, true) != 0)
+		return -1;
+	printf("bugeater_rmdir called successfully!\n");
+	return 0;
 }
 
 void *bugeater_mknod(){

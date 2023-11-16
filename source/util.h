@@ -6,7 +6,8 @@
 #define TRIPLE_ADDRESS_SCOPE 256L * 256L * 256L * 512L // 三次间址能覆盖的文件大小
 #define DEFAULT_DIR_SIZE 32L // 当一个目录创建时，一定有两个目录项表示"."和".."
 
-#define RDEXISTS -1 // regular和dir均已存在
+#define RDEXISTS -1 // regular或dir均已存在
+#define RDNOEXISTS -2 // regular或dir不存在
 
 #include <sys/types.h>
 #include <stdbool.h>
@@ -70,3 +71,8 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir); // 根据files_s
  * 根据ino获得最后一个目录项的位置，以数组形式表示，下标0的值index1表示是arr[index1]表示的数据块中，依此类推
 */
 ssize_t *GetLastTupleByIno(int ino); 
+// 此函数为递归函数，用于删除文件或文件夹 
+int remove_file(const char*parent_path, const char *target, bool is_dir);
+int DelSign(const unsigned short int parent_ino, const int index, const unsigned short int target_ino);
+void SetInoMap(const unsigned short int ino, bool status);
+void SetBnoMap(const unsigned short int bno, bool status);

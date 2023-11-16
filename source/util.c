@@ -344,7 +344,7 @@ int create_file(const char *path, bool is_dir)
 			strcat(name, ".");
 			strcat(name, tuples[i].f_ext);
 		}
-		if(name == target)
+		if(strcmp(name, target) == 0)
 		{
 			return RDEXISTS;
 		}
@@ -465,24 +465,6 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 			new_tuple->i_num = target_ino;
 			memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
 			fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
-			// printf("new_tuple->f_name is %s\n", new_tuple->f_name);
-			// printf("new_tuple->f_ext is %s\n", new_tuple->f_ext);
-			// printf("check7\n");
-
-			// struct DataBlock *tmp = malloc(sizeof(struct DataBlock));
-			// GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[res[0]], tmp);
-			// struct DirTuple *t1 = malloc(sizeof(struct DirTuple));
-			// memcpy(t1, tmp->data, sizeof(struct DirTuple));
-			// struct DirTuple *t2 = malloc(sizeof(struct DirTuple));
-			// memcpy(t2, tmp->data + sizeof(struct DirTuple), sizeof(struct DirTuple));
-			// struct DirTuple *t3 = malloc(sizeof(struct DirTuple));
-			// memcpy(t3, tmp->data + sizeof(struct DirTuple) + sizeof(struct DirTuple), sizeof(struct DirTuple));
-			// printf("t1->f_name is %s\n", t1->f_name);
-			// printf("t2->f_name is %s\n", t2->f_name);
-			// printf("t2->f_ext is %s\n", t2->f_ext);
-			// printf("t3->f_name is %s\n", t3->f_name);
-			// printf("t3->f_ext is %s\n", t3->f_ext);
-
 			free(new_tuple);
 		}
 		else
@@ -616,4 +598,170 @@ ssize_t *GetLastTupleByIno(int ino)
 	}
 	// printf("GetLastTupleByIno called succesfully!\n");
 	return res;
+}
+
+int remove_file(const char*parent_path, const char *target, bool is_dir)
+{
+	// printf("remove_file start!\n");
+	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
+	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
+	{
+		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+	}
+
+	// printf("check1\n");
+	unsigned short int parent_ino = parent_dir->i_num;
+	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
+	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
+	tuples = GetMultiDirTuples(parent_ino);
+	unsigned short int target_ino;
+
+	// printf("check2\n");
+	bool is_exist = false;
+	ssize_t i = 0;
+	for(; i < count; i++)
+	{
+		char name[16];
+		strcpy(name, tuples[i].f_name);
+		if (strlen(tuples[i].f_ext) != 0)
+		{
+			strcat(name, ".");
+			strcat(name, tuples[i].f_ext);
+		}
+		if(strcmp(name, target) == 0)
+		{
+			is_exist = true;
+			target_ino = tuples[i].i_num;
+			break;
+		}
+	}
+	// printf("check3\n");
+	// printf("is_exist is %d\n", is_exist);
+	if(!is_exist)
+		return RDNOEXISTS;
+
+	if(is_dir) // 文件夹的话需要递归删除
+	{
+		// printf("check4\n");
+		int new_parent_path_len = strlen(parent_path) + strlen(target) + 2;
+		char *new_parent_path = malloc(sizeof(char) * new_parent_path_len);
+		strcpy(new_parent_path, parent_path);
+		strcat(new_parent_path, target);
+		strcat(new_parent_path, "/");
+		// printf("new_parent_path is %s\n", new_parent_path);
+
+		ssize_t new_count = inodes[target_ino].st_size / sizeof(struct DirTuple); // 表示target文件夹有多少个目录项
+		struct DirTuple *new_tuples = malloc(sizeof(struct DirTuple) * new_count);
+		new_tuples = GetMultiDirTuples(target_ino);
+
+		// printf("递归删除target文件夹下的file\n");
+		// 递归删除target文件夹下的file
+		for(ssize_t new_i = 2; new_i < new_count; new_i++)
+		{
+			char new_target[16];
+			strcpy(new_target, new_tuples[new_i].f_name);
+			if (strlen(new_tuples[new_i].f_ext) != 0)
+			{
+				strcat(new_target, ".");
+				strcat(new_target, new_tuples[new_i].f_ext);
+			}
+			bool new_is_dir = false;
+			if(inodes[new_i].st_mode & __S_IFDIR) new_is_dir = true;
+			if(remove_file(new_parent_path, new_target, new_is_dir) == RDNOEXISTS)
+			{
+				fprintf(stderr, "the new_target not found in new_parent_dir! (func: remove_file)");
+			}
+		}
+		// printf("开始删target这个文件夹\n");
+
+		// 开始删target这个文件夹
+		DelSign(parent_ino, i, target_ino);
+		// printf("check7\n");
+
+	}
+	else // 普通文件就不需要递归删除
+	{
+		DelSign(parent_ino, i, target_ino);
+	}
+
+	// printf("remove_file called successfully!\n");
+	return 0;
+}
+
+int DelSign(const unsigned short int parent_ino, const int index, const unsigned short int target_ino)
+{
+	// printf("DelSign start!\n");
+	// printf("parent_ino is %hu, index is %d\n", parent_ino, index);
+
+	// 根据parent_ino来删除第index的目录项，（注意！需要把后面的目录项移到前面来） ToDo: 只考虑了最简单的只使用addr[0]的情况
+	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0], tmp_db);
+	if(inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple) == 0)
+		memset(tmp_db->data + index * sizeof(struct DirTuple), 0, sizeof(struct DirTuple));
+	else
+		memcpy(tmp_db->data + index * sizeof(struct DirTuple), tmp_db->data + (index + 1) * sizeof(struct DirTuple), inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple));
+	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+	{
+        fprintf(stderr, "fseek failed! (func: DelSign)\n");
+		return -1;
+	}
+	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0], tmp_db);
+
+	// 移除target的inode和block
+	SetInoMap(target_ino, false);
+	for(int i = 0; i < 7; i++)
+	{
+		if(i >= 0 && i < 4)
+		{
+			SetBnoMap(inodes[target_ino].addr[i], false);
+		}
+	}
+
+	// 父文件夹的大小也要减小16
+	inodes[parent_ino].st_size -= 16L;
+	if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
+		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
+	if (fseek(fp, parent_ino * sizeof(struct Inode), SEEK_CUR) != 0) 
+		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
+	fwrite(&inodes[parent_ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+
+	//printf("DelSign called successfully!\n");
+	return 0;
+}
+
+void SetInoMap(const unsigned short int ino, bool status)
+{
+	// printf("SetInoMap start!\n");
+	int index = ino / 32; int offset = ino % 32;
+	// printf("index is %d, offset is %d\n", index, offset);
+	if (fseek(fp, BLOCK_SIZE * 1 + index * 4L, SEEK_SET) != 0) 
+        fprintf(stderr, "bitmap fseek failed! (func: SetInoMap)");
+	unsigned int *tmp = malloc(sizeof(unsigned int));
+	fread(tmp, sizeof(unsigned int), 1, fp);
+	if(status)
+		*tmp |= (unsigned int)(1 << (31 - offset));
+	else
+		*tmp ^= (unsigned int)(1 << (31 - offset));
+	if (fseek(fp, BLOCK_SIZE * 1 + index * 4L, SEEK_SET) != 0) 
+        fprintf(stderr, "bitmap fseek failed! (func: SetInoMap)");
+	fwrite(tmp, sizeof(unsigned int), 1, fp);
+
+	// printf("SetInoMap called successfully!\n");
+}
+
+void SetBnoMap(const unsigned short int bno, bool status)
+{
+	int index = bno / 32; int offset = bno % 32;
+	if (fseek(fp, BLOCK_SIZE * 2 + index * 4L, SEEK_SET) != 0) 
+        fprintf(stderr, "bitmap fseek failed! (func: SetBnoMap)");
+	unsigned int *tmp = malloc(sizeof(unsigned int));
+	fread(tmp, sizeof(unsigned int), 1, fp);
+	if(status)
+		*tmp |= (unsigned int)(1 << (31 - offset));
+	else
+		*tmp ^= (unsigned int)(1 << (31 - offset));
+	if (fseek(fp, BLOCK_SIZE * 2 + index * 4L, SEEK_SET) != 0) 
+        fprintf(stderr, "bitmap fseek failed! (func: SetBnoMap)");
+	fwrite(tmp, sizeof(unsigned int), 1, fp);
 }

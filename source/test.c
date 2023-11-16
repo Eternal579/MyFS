@@ -27,29 +27,12 @@ int main(){
     // int arr[5] = {1,2,3,4,5};
     // int sz = sizeof(arr) / sizeof(int);
     // printf("sz is %d\n", sz);
+    
+    unsigned int tmp1 = 1 << 31;
+    printf("%u\n", tmp1);
+    unsigned int tmp2 = (1 << 31) + (1 << 30);
+    printf("%u\n", tmp2);
 
-    if (fseek(fp, 0, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
-	{
-        fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
-		return -1;
-	}
-    // int tmp = 579;
-    // fwrite(&tmp, sizeof(int), 1, fp);
-    // while(1)
-    // {
-        
-    // }
-    //fclose(fp);
-    // if (fseek(fp, 0, SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
-	// {
-    //     fprintf(stderr, "block get failed! (func: GetSingleDataBlock)\n");
-	// 	return -1;
-	// }
-    int *q = malloc(sizeof(int));
-    if(fread(q, sizeof(int), 1, fp) == 0)
-        fprintf(stderr, "error");
-    printf("### %d\n", *q);
-    fclose(fp);
 
     return 0;
 }
