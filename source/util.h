@@ -61,6 +61,7 @@ void FilePointerInit();
 int GetSingleDirTuple(const char * path, struct DirTuple *dir_tuple); // 根据path来获取所对应的单个目录项
 struct DirTuple* GetMultiDirTuples(const int ino); // 根据ino来获取目录的全部目录项（主要是为了处理有间址的情况）
 int GetSingleDataBlock(const int bno, struct DataBlock *d_block); // 根据bno块号（从0开始）来读取一块到d_block
+int create_file(const char *path, bool is_dir); // 创建文件或文件夹
 short int DistributeIno(ssize_t file_size, bool is_dir); // 根据file_size来分配inode
 // 将名为target，inode号为target_ino的目录项插在parent_ino所指出的父目录下
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino);
