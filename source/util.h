@@ -77,3 +77,5 @@ int remove_file(const char*parent_path, const char *target, bool is_dir);
 int DelSign(const unsigned short int parent_ino, const int index, const unsigned short int target_ino);
 void SetInoMap(const unsigned short int ino, bool status);
 void SetBnoMap(const unsigned short int bno, bool status);
+void ModifyInodeZone(int ino); // 修改inode区
+int GetTargetInoByPath(const char *path); // 根据path提取出target的inode号，在write和read中都有用

@@ -26,7 +26,7 @@ static void *bugeater_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 
     printf("\nbugeater_init() called!\n");
 	(void) conn;
-	//cfg->kernel_cache = 1; // 启用内核缓存，提高文件系统性能
+	cfg->kernel_cache = 1; // 启用内核缓存，提高文件系统性能
 
 	/* 处理与超级块有关的信息 */
     k_super_block = malloc(sizeof(struct SuperBlock));
@@ -262,76 +262,22 @@ static int bugeater_write (const char *path, const char *buf, size_t size, off_t
 	printf("path is %s\n", path);
 
 	printf("buf contain %s\n", buf);
-	int path_len = strlen(path);
-	int s = path_len - 1;
-	for(; s >= 0; s--)
-	{
-		if (path[s] == '/')
-			break;
-	}
-	char parent_path[path_len]; // 父目录的路径
-	strncpy(parent_path, path, s + 1); 
-	parent_path[s + 1] = '\0';
-	//printf("parent_path is %s\n", parent_path);
 
-	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
-	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
-	{
-		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
-	}
-
-	unsigned short int parent_ino = parent_dir->i_num;
-	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
-	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
-	tuples = GetMultiDirTuples(parent_ino);
-	int target_ino;
-
-	char target[path_len - s];
-	strcpy(target, path + s + 1);
-	bool is_exist = false;
-	for(ssize_t i = 0; i < count; i++)
-	{
-		char name[16];
-		strcpy(name, tuples[i].f_name);
-		if (strlen(tuples[i].f_ext) != 0)
-		{
-			strcat(name, ".");
-			strcat(name, tuples[i].f_ext);
-		}
-		if(strcmp(name, target) == 0)
-		{
-			is_exist = true;
-			target_ino = tuples[i].i_num;
-			break;
-		}
-	}
-
-	if(!is_exist)
+	int target_ino = GetTargetInoByPath(path);
+	if(target_ino == -1)
 		return -ENONET;
 
 	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
 	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0], tmp_db); // ToDo：这里依然只写了addr[0]
 
 	inodes[target_ino].st_size += strlen(buf);
-	// 把修改的inodes写进diskimg
-	if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
-		fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
-	if (fseek(fp, target_ino * sizeof(struct Inode), SEEK_CUR) != 0) 
-		fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
-	fwrite(&inodes[target_ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+	ModifyInodeZone(target_ino);
 
 	//printf("strlen(buf) is %d ####\n", strlen(buf));
 	memcpy(tmp_db->data + offset, buf, strlen(buf));
 	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
 			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
 	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
-
-	// if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
-	// 		fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
-	// fread(tmp_db, sizeof(struct DataBlock), 1, fp);
-	// char *tmp_ch = malloc(sizeof(char) * 20);
-	// tmp_ch = (char *)(tmp_db->data);
-	// printf("写了之后: %s\n", tmp_ch);
 
 	printf("bugeater_write called successfully!\n");
 	return strlen(buf);
@@ -352,51 +298,8 @@ static int bugeater_read(const char *path, char *buf, size_t size, off_t offset,
     printf("\nbugeater_read start!\n");
 	printf("path is %s, size is %ld\n", path, size);
 
-	int path_len = strlen(path);
-	int s = path_len - 1;
-	for(; s >= 0; s--)
-	{
-		if (path[s] == '/')
-			break;
-	}
-	char parent_path[path_len]; // 父目录的路径
-	strncpy(parent_path, path, s + 1); 
-	parent_path[s + 1] = '\0';
-	//printf("parent_path is %s\n", parent_path);
-
-	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
-	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
-	{
-		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
-	}
-
-	unsigned short int parent_ino = parent_dir->i_num;
-	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
-	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
-	tuples = GetMultiDirTuples(parent_ino);
-	int target_ino;
-
-	char target[path_len - s];
-	strcpy(target, path + s + 1);
-	bool is_exist = false;
-	for(ssize_t i = 0; i < count; i++)
-	{
-		char name[16];
-		strcpy(name, tuples[i].f_name);
-		if (strlen(tuples[i].f_ext) != 0)
-		{
-			strcat(name, ".");
-			strcat(name, tuples[i].f_ext);
-		}
-		if(strcmp(name, target) == 0)
-		{
-			is_exist = true;
-			target_ino = tuples[i].i_num;
-			break;
-		}
-	}
-
-	if(!is_exist)
+	int target_ino = GetTargetInoByPath(path);
+	if(target_ino == -1)
 		return -ENONET;
 
 	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));

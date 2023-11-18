@@ -489,12 +489,7 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 	inodes[parent_ino].st_nlink ++;
 	inodes[parent_ino].st_size += 16L;
 
-	// 把修改的inodes写进diskimg
-	if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
-		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
-	if (fseek(fp, parent_ino * sizeof(struct Inode), SEEK_CUR) != 0) 
-		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
-	fwrite(&inodes[parent_ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+	ModifyInodeZone(parent_ino);
 
 	//printf("AddToParentDir called successfully!\n");
     return 0;
@@ -543,12 +538,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 				clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
 				printf("block no distributed is %hd\n", inodes[ino].addr[0]);
 
-				// 把修改的inodes写进diskimg
-				if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
-					fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
-				if (fseek(fp, ino * sizeof(struct Inode), SEEK_CUR) != 0) 
-					fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
-				fwrite(&inodes[ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+				ModifyInodeZone(ino);
 				return 0;
 			}	
 		}
@@ -721,11 +711,7 @@ int DelSign(const unsigned short int parent_ino, const int index, const unsigned
 
 	// 父文件夹的大小也要减小16
 	inodes[parent_ino].st_size -= 16L;
-	if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
-		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
-	if (fseek(fp, parent_ino * sizeof(struct Inode), SEEK_CUR) != 0) 
-		fprintf(stderr, "inode block fseek failed! (func: AddToParentDir)\n");
-	fwrite(&inodes[parent_ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+	ModifyInodeZone(parent_ino);
 
 	//printf("DelSign called successfully!\n");
 	return 0;
@@ -765,4 +751,62 @@ void SetBnoMap(const unsigned short int bno, bool status)
 	if (fseek(fp, BLOCK_SIZE * 2 + index * 4L, SEEK_SET) != 0) 
         fprintf(stderr, "bitmap fseek failed! (func: SetBnoMap)");
 	fwrite(tmp, sizeof(unsigned int), 1, fp);
+}
+
+void ModifyInodeZone(int ino)
+{
+	// 把修改的inodes写进diskimg
+	if (fseek(fp, BLOCK_SIZE * 6 + ino * sizeof(struct Inode), SEEK_SET) != 0) // 将指针移动到inode区的正确位置
+		fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
+	fwrite(&inodes[ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+}
+
+int GetTargetInoByPath(const char *path)
+{
+	int target_ino = -1;
+
+	int path_len = strlen(path);
+	int s = path_len - 1;
+	for(; s >= 0; s--)
+	{
+		if (path[s] == '/')
+			break;
+	}
+	char parent_path[path_len]; // 父目录的路径
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	//printf("parent_path is %s\n", parent_path);
+
+	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
+	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
+	{
+		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+	}
+
+	unsigned short int parent_ino = parent_dir->i_num;
+	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
+	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
+	tuples = GetMultiDirTuples(parent_ino);
+
+	char target[path_len - s];
+	strcpy(target, path + s + 1);
+	bool is_exist = false;
+	for(ssize_t i = 0; i < count; i++)
+	{
+		char name[16];
+		strcpy(name, tuples[i].f_name);
+		if (strlen(tuples[i].f_ext) != 0)
+		{
+			strcat(name, ".");
+			strcat(name, tuples[i].f_ext);
+		}
+		if(strcmp(name, target) == 0)
+		{
+			is_exist = true;
+			target_ino = tuples[i].i_num;
+			break;
+		}
+	}
+
+	return target_ino;
 }
