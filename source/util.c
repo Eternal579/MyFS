@@ -20,7 +20,7 @@ ssize_t DivideCeil(ssize_t x, ssize_t y)
 	return (x + y - 1L) / y;
 }
 
-int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这个函数只会看文件夹的addr[0]数据块，现在实在是不想写了
+int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 {
 	// 先获取根目录项
 	struct DataBlock *cur_dblock = malloc(sizeof(struct DataBlock));
@@ -30,22 +30,27 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这
 		return -1;
 	}
 	struct DirTuple *root_tuple = (struct DirTuple *)(cur_dblock); // 强转过来即可
-	// 获取根目录文件大小
-	off_t cur_size = inodes[root_tuple->i_num].st_size;
+	*dir_tuple = *root_tuple;
+
 	if(strcmp(path, "/") == 0)
 	{
-		*dir_tuple = *root_tuple;
 		return 0;
 	}
 	else
 	{
 		//printf("###########################\n");
+
 		int len = strlen(path);
 		char *cur_path = malloc((len) * sizeof(char));
 		strcpy(cur_path, path + 1);
 		//printf("cur_path is %s\n", cur_path);
+
 		while(strlen(cur_path) != 0)
 		{
+			// 获取dir目录文件大小
+			off_t cur_size = inodes[dir_tuple->i_num].st_size;
+
+			// 处理出target来
 			int cur_len = strlen(cur_path); int s = cur_len;
 			for(int i = 0; i < cur_len; i++)
 			{
@@ -58,28 +63,22 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这
 			char *target = malloc((s + 1) * sizeof(char)); // target是要寻找的文件夹或文件的名字
 			strncpy(target, cur_path, s);
 			target[s] = '\0';
-			//printf("target is %s\n", target);
+			// printf("target is %s\n", target);
 
 			ssize_t tuple_no = 0; ssize_t offset = sizeof(struct DirTuple); bool find_flag = false;
-			//printf("cur_size / offset is %d\n", cur_size / offset);
+			struct DirTuple *tuples = malloc(cur_size);
+			tuples = GetMultiDirTuples(dir_tuple->i_num);
+
+			// printf("cur_size / offset is %d\n", cur_size / offset);
 			while(tuple_no < cur_size / offset)
 			{
-				/* 以下写法只会修改函数指针副本所指向的内存，并不会把原有内存修改，所以是错误的 */
-				// dir_tuple = (struct DirTuple *)(&cur_dblock->data[0] + tuple_no * offset); 
-				/* 这样才会修改原有内存的数据 */
-				memcpy(dir_tuple, cur_dblock->data + tuple_no * offset, sizeof(struct DirTuple));
+				*dir_tuple = tuples[tuple_no];
 				if(strcmp(dir_tuple->f_ext, "") == 0) // 当前目录项无后缀名
 				{
-					//printf("tuple_no is %d, dir_tuple->f_name is %s\n", tuple_no, dir_tuple->f_name);
+					// printf("tuple_no is %d, dir_tuple->f_name is %s\n", tuple_no, dir_tuple->f_name);
 					if(strcmp(dir_tuple->f_name, target) == 0) // 找到target了
 					{
-						//printf("target found!\n");
-						/* 把target所在的数据块存到cur_dblock里 */
-						if(GetSingleDataBlock(inodes[dir_tuple->i_num].addr[0] + ROOT_DIR_TUPLE_BNO, cur_dblock) == -1)
-						{
-							fprintf(stderr, "get target dir tuple fail! (func: GetSingleDirTuple)\n");
-							return -1;
-						}
+						// printf("target found!\n");
 
 						// 修改cur_path
 						if(strlen(target) == strlen(cur_path)) 
@@ -90,9 +89,8 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这
 						{
 							strcpy(cur_path, cur_path + strlen(target) + 1); 
 						}
-						cur_size = inodes[dir_tuple->i_num].st_size; // 不要忘了修改cur_size
 
-						//printf("cur_path is $$%s$$\n", cur_path);
+						// printf("cur_path is $$%s$$\n", cur_path);
 						find_flag = true;
 						break;
 					}
@@ -103,13 +101,7 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这
 					strncpy(integral_name, dir_tuple->f_name, 8);
 					strcat(integral_name, dir_tuple->f_ext);
 					if(strcmp(integral_name, target) == 0) // 找到target了
-					{ 
-						/* 把target所在的数据块存到cur_dblock里 */
-						if(GetSingleDataBlock(inodes[dir_tuple->i_num].addr[0] + ROOT_DIR_TUPLE_BNO, cur_dblock) == -1)
-						{
-							fprintf(stderr, "get target dir tuple fail! (func: GetSingleDirTuple)\n");
-							return -1;
-						}
+					{
 						// 修改cur_path
 						if(strlen(target) == strlen(cur_path)) 
 						{
@@ -119,9 +111,8 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple) // ToDo: 这
 						{
 							strcpy(cur_path, cur_path + strlen(target) + 1); 
 						}
-						cur_size = inodes[dir_tuple->i_num].st_size; // 不要忘了修改cur_size
 
-						printf("cur_path is $$%s$$\n", cur_path);
+						// printf("cur_path is $$%s$$\n", cur_path);
 						find_flag = true;
 						break;
 					}
