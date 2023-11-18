@@ -86,13 +86,17 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 			stbuf->st_mode = __S_IFDIR | 0755; // 755表示owner拥有rwx权限，而group和其他只有rx权限
 			stbuf->st_size = inodes[dir_tuple->i_num].st_size;
 			stbuf->st_nlink = inodes[dir_tuple->i_num].st_nlink;
+			stbuf->st_atime = inodes[dir_tuple->i_num].st_atim.tv_sec;
+			printf("stbuf->st_atime is %ld\n", stbuf->st_atime);
 			printf("it's a DIR\n");
 		}
 		else if(inodes[dir_tuple->i_num].st_mode & __S_IFREG) // 是个文件
 		{
-			stbuf->st_mode = __S_IFREG | 0744; 
+			stbuf->st_mode = __S_IFREG | 0666; 
 			stbuf->st_size = inodes[dir_tuple->i_num].st_size;
 			stbuf->st_nlink = inodes[dir_tuple->i_num].st_nlink;
+			stbuf->st_atime = inodes[dir_tuple->i_num].st_atim.tv_sec;
+			printf("stbuf->st_atime is %ld\n", stbuf->st_atime);
 			printf("it's a REG\n");
 		}
 		else
@@ -178,7 +182,7 @@ static int bugeater_mkdir(const char *path, mode_t mode)
 	return 0;
 }
 
-static int *bugeater_rmdir(const char *path){
+static int bugeater_rmdir(const char *path){
     printf("\nbugeater_rmdir called!\n");
 	printf("path is %s\n", path);
 	
@@ -208,20 +212,199 @@ static int *bugeater_rmdir(const char *path){
 	return 0;
 }
 
-void *bugeater_mknod(){
-    
+static int bugeater_mknod(const char *path, mode_t mode, dev_t dev){
+    printf("\nbugeater_mknod called!\n");
+	//printf("path is %s\n", path);
+	
+	if (create_file(path, false) != 0)
+		return -1;
+	printf("bugeater_mknod called successfully!\n");
+	return 0;
 }
 
-void *bugeater_unlink(){
-    
+static int bugeater_unlink(const char *path){
+    printf("\nbugeater_unlink called!\n");
+	printf("path is %s\n", path);
+
+	int path_len = strlen(path);
+	int s = path_len - 1;
+	for(; s >= 0; s--)
+	{
+		if (path[s] == '/')
+			break;
+	}
+	char parent_path[path_len]; // 父目录的路径
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	//printf("parent_path is %s\n", parent_path);
+	char target[path_len - s];
+	strcpy(target, path + s + 1);
+
+	if (remove_file(parent_path, target, false) != 0)
+		return -1;
+	printf("bugeater_rmdir called successfully!\n");
+	return 0;
 }
 
-void *bugeater_read(){
-    
+/**
+ * write函数把即将写入文件的数据从buf里写道datablock中
+ * 参数说明：
+ * 1. path：要写入的文件路径
+ * 2. buf：用于要写入文件的数据的缓冲区
+ * 3. size：要写入的数据的大小
+ * 4. offset：写入数据的起始位置（相对于文件的开头）
+ * 5. fi：文件信息结构体
+ * tips：
+ * 不同于readdir，这里的offset是有用的
+*/
+static int bugeater_write (const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
+    printf("\nbugeater_write start!\n");
+	printf("path is %s\n", path);
+
+	printf("buf contain %s\n", buf);
+	int path_len = strlen(path);
+	int s = path_len - 1;
+	for(; s >= 0; s--)
+	{
+		if (path[s] == '/')
+			break;
+	}
+	char parent_path[path_len]; // 父目录的路径
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	//printf("parent_path is %s\n", parent_path);
+
+	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
+	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
+	{
+		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+	}
+
+	unsigned short int parent_ino = parent_dir->i_num;
+	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
+	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
+	tuples = GetMultiDirTuples(parent_ino);
+	int target_ino;
+
+	char target[path_len - s];
+	strcpy(target, path + s + 1);
+	bool is_exist = false;
+	for(ssize_t i = 0; i < count; i++)
+	{
+		char name[16];
+		strcpy(name, tuples[i].f_name);
+		if (strlen(tuples[i].f_ext) != 0)
+		{
+			strcat(name, ".");
+			strcat(name, tuples[i].f_ext);
+		}
+		if(strcmp(name, target) == 0)
+		{
+			is_exist = true;
+			target_ino = tuples[i].i_num;
+			break;
+		}
+	}
+
+	if(!is_exist)
+		return -ENONET;
+
+	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0], tmp_db); // ToDo：这里依然只写了addr[0]
+
+	inodes[target_ino].st_size += strlen(buf);
+	// 把修改的inodes写进diskimg
+	if (fseek(fp, BLOCK_SIZE * 6, SEEK_SET) != 0) // 将指针移动到inode区的起始位置
+		fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
+	if (fseek(fp, target_ino * sizeof(struct Inode), SEEK_CUR) != 0) 
+		fprintf(stderr, "inode block fseek failed! (func: DistributeBlockNo)\n");
+	fwrite(&inodes[target_ino], sizeof(struct Inode), 1, fp); // 已修改inode区
+
+	//printf("strlen(buf) is %d ####\n", strlen(buf));
+	memcpy(tmp_db->data + offset, buf, strlen(buf));
+	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
+			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
+	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+
+	// if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
+	// 		fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
+	// fread(tmp_db, sizeof(struct DataBlock), 1, fp);
+	// char *tmp_ch = malloc(sizeof(char) * 20);
+	// tmp_ch = (char *)(tmp_db->data);
+	// printf("写了之后: %s\n", tmp_ch);
+
+	printf("bugeater_write called successfully!\n");
+	return strlen(buf);
 }
 
-void *bugeater_write(){
-    
+/**
+ * read函数从文件开头偏移offset的位置，把数据读入buf
+ * 参数说明：
+ * 1. path：要读入的文件路径
+ * 2. buf：用于要读入文件的数据的缓冲区
+ * 3. size：要读入的数据的大小
+ * 4. offset：读入数据的起始位置（相对于文件的开头）
+ * 5. fi：文件信息结构体
+ * tips：
+ * 不同于readdir，这里的offset是有用的
+*/
+static int bugeater_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
+    printf("\nbugeater_read start!\n");
+	printf("path is %s, size is %ld\n", path, size);
+
+	int path_len = strlen(path);
+	int s = path_len - 1;
+	for(; s >= 0; s--)
+	{
+		if (path[s] == '/')
+			break;
+	}
+	char parent_path[path_len]; // 父目录的路径
+	strncpy(parent_path, path, s + 1); 
+	parent_path[s + 1] = '\0';
+	//printf("parent_path is %s\n", parent_path);
+
+	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
+	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
+	{
+		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+	}
+
+	unsigned short int parent_ino = parent_dir->i_num;
+	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
+	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
+	tuples = GetMultiDirTuples(parent_ino);
+	int target_ino;
+
+	char target[path_len - s];
+	strcpy(target, path + s + 1);
+	bool is_exist = false;
+	for(ssize_t i = 0; i < count; i++)
+	{
+		char name[16];
+		strcpy(name, tuples[i].f_name);
+		if (strlen(tuples[i].f_ext) != 0)
+		{
+			strcat(name, ".");
+			strcat(name, tuples[i].f_ext);
+		}
+		if(strcmp(name, target) == 0)
+		{
+			is_exist = true;
+			target_ino = tuples[i].i_num;
+			break;
+		}
+	}
+
+	if(!is_exist)
+		return -ENONET;
+
+	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0], tmp_db); // ToDo：这里依然只写了addr[0]
+	memcpy(buf, tmp_db->data + offset, size);
+
+	printf("bugeater_read called successfully\n");
+	return size;
 }
 
 static const struct fuse_operations MyFS_ops = {

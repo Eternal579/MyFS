@@ -535,11 +535,12 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 				if(is_dir)
 					inodes[ino].st_mode = __S_IFDIR | 0755;
 				else
-					inodes[ino].st_mode = __S_IFREG | 0744;
+					inodes[ino].st_mode = __S_IFREG | 0666;
 				inodes[ino].st_size = file_size;
 				inodes[ino].st_nlink = 2;
 				inodes[ino].st_ino = ino;
 				inodes[ino].addr[0] = (short int)i * 32 + (short int)count; 
+				clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
 				printf("block no distributed is %hd\n", inodes[ino].addr[0]);
 
 				// 把修改的inodes写进diskimg
@@ -606,7 +607,7 @@ int remove_file(const char*parent_path, const char *target, bool is_dir)
 	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
 	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
 	{
-		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+		fprintf(stderr, "parent_dir cannot be found! (func: remove_file)");
 	}
 
 	// printf("check1\n");
