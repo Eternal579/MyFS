@@ -154,7 +154,6 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 	// 在我自定义的目录结构里也是有"."和".."的	
 	for(int i = 0; i < count; i++)
 	{
-		printf("## %s ##\n", tuples[i].f_name);
 		char name[16];
 		strcpy(name, tuples[i].f_name);
 		if (strlen(tuples[i].f_ext) != 0)
@@ -163,6 +162,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 			strcat(name, tuples[i].f_ext);
 		}
 		filler(buf, name, NULL, 0, 0);
+		printf("## %s ##\n", name);
 	}
 	free(path_dirtuple); free(tuples);
 
@@ -276,7 +276,7 @@ static int bugeater_write (const char *path, const char *buf, size_t size, off_t
 	//printf("strlen(buf) is %d ####\n", strlen(buf));
 	memcpy(tmp_db->data + offset, buf, strlen(buf));
 	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
-			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
+			fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
 	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
 
 	printf("bugeater_write called successfully!\n");

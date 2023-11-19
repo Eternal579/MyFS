@@ -38,12 +38,12 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 	}
 	else
 	{
-		//printf("###########################\n");
+		// printf("###########################\n");
 
 		int len = strlen(path);
 		char *cur_path = malloc((len) * sizeof(char));
 		strcpy(cur_path, path + 1);
-		//printf("cur_path is %s\n", cur_path);
+		// printf("cur_path is %s\n", cur_path);
 
 		while(strlen(cur_path) != 0)
 		{
@@ -99,6 +99,7 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 				{
 					char *integral_name = (char *)malloc(12 * sizeof(char));
 					strncpy(integral_name, dir_tuple->f_name, 8);
+					strcat(integral_name, ".");
 					strcat(integral_name, dir_tuple->f_ext);
 					if(strcmp(integral_name, target) == 0) // 找到target了
 					{
@@ -140,6 +141,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 
 	struct DataBlock *tuples_block = malloc(sizeof(struct DataBlock));
 	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
+	// printf("dir_size is %ld\n", dir_size);
 	struct DirTuple *tuples = malloc(dir_size);
 	off_t base = 0; // 每次cp时的基准偏移量 <=> 目前已读的大小
 	for(int i = 0; i < 7; i++)
@@ -151,7 +153,14 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 		{
 			ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-			memcpy(tuples + base, tuples_block, cur_size);
+			printf("base is %ld, cur_size is %ld\n", base, cur_size);
+			printf("check1\n");
+
+			struct DirTuple * tmp = (struct DirTuple*)(tuples_block);
+			printf("tmp->f_name is %s\n", tmp->f_name);
+
+			memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
+			printf("check2\n");
 			base += cur_size; 
 		}
 		else if(i == 4) // 1级间址
@@ -175,7 +184,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 				if(GetSingleDataBlock(*block_no_1 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0)
 				{
 					ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-					memcpy(tuples + base, tuples_block, cur_size);
+					memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 					base += cur_size;
 				}
 			}
@@ -215,7 +224,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 					if(GetSingleDataBlock(*block_no_2 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
 					{
 						ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-						memcpy(tuples + base, tuples_block, cur_size);
+						memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 						base += cur_size;
 					}
 				}
@@ -270,7 +279,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 						if(GetSingleDataBlock(*block_no_3 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
 						{
 							ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
-							memcpy(tuples + base, tuples_block, cur_size);
+							memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 							base += cur_size;
 						}
 					}
@@ -407,7 +416,7 @@ short int DistributeIno(ssize_t file_size, bool is_dir)
 			if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
 				fprintf(stderr, "bitmap fseek failed! (func: DistributeIno)\n");
 			fwrite(res, sizeof(unsigned int), 1, fp); // 已修改inode位图
-			ino = (short int)i * 32 + (short int)count;
+			ino = (short int)i * 8 + (short int)count;
 			break;
 		}	
 	}
@@ -423,7 +432,7 @@ short int DistributeIno(ssize_t file_size, bool is_dir)
 
 int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino) // ToDo：这里没有考虑如果要使用到addr[1]后面的情况，一样，现在不想写
 {
-	//printf("AddToParentDir start!\n");
+	printf("AddToParentDir start!\n");
 	ssize_t *res = malloc(sizeof(ssize_t) * 5);
 	if((res = GetLastTupleByIno(parent_ino)) == NULL)
 		fprintf(stderr, "can't get last tuple! (func: AddToParentDir)");
@@ -433,8 +442,19 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 	{
 		if(res[1] < 32)
 		{
+			printf("res[0] = %ld, res[1] = %ld\n", res[0], res[1]);
+
+			if(res[0] == 1){
+				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+				struct DirTuple *tmp_tuple = malloc(sizeof(struct DirTuple));
+				fread(tmp_tuple,sizeof(struct DirTuple), 1, fp);
+				printf("%s 加入父文件夹之前，第一个目录项是%s\n", target, tmp_tuple->f_name);
+			}
+
 			if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO) + res[1] * sizeof(struct DirTuple), SEEK_SET) != 0)
 				fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+
 			struct DirTuple *new_tuple = malloc(sizeof(struct DirTuple));
 			int target_len = strlen(target);
 			int i = target_len - 1;
@@ -456,11 +476,57 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 			new_tuple->i_num = target_ino;
 			memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
 			fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
+
+			if(res[0] == 1){
+				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+				struct DirTuple *tmp_tuple = malloc(sizeof(struct DirTuple));
+				fread(tmp_tuple,sizeof(struct DirTuple), 1, fp);
+				printf("%s 加入父文件夹之后，第一个目录项是%s\n", target, tmp_tuple->f_name);
+			}
+
 			free(new_tuple);
 		}
-		else
+		else // addr[res[0]]表示的数据块被用满了，需要使用后面的了
 		{
+			printf("check1\n");
+			if(res[0] >= 0 && res[0] <= 2)
+			{
+				printf("check2\n");
+				printf("inodes[parent_ino].st_size + 16L is %ld\n", inodes[parent_ino].st_size + 16L);
+				DistributeBlockNo(inodes[parent_ino].st_size + 16L, parent_ino, true);
+				printf("inodes[parent_ino].addr[res[0] + 1] is %hd\n", inodes[parent_ino].addr[res[0] + 1]);
 
+				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0] + 1] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+				
+				struct DirTuple *new_tuple = malloc(sizeof(struct DirTuple));
+				int target_len = strlen(target);
+				int i = target_len - 1;
+				for(; i >= 0; i--)
+				{
+					if(target[i] == '.')
+						break;
+				}
+				if(i == -1) 
+				{
+					strcpy(new_tuple->f_name, target);
+					memset(new_tuple->f_ext, 0, sizeof(new_tuple->f_ext)); // 这句话千万不能忘，不然出一堆bug
+				}
+				else
+				{
+					strncpy(new_tuple->f_name, target, i);
+					strcpy(new_tuple->f_ext, target + i + 1);
+				}
+				new_tuple->i_num = target_ino;
+				memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
+				fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
+				free(new_tuple);
+			}
+			else
+			{
+
+			}
 		}
 	}
 	else if(res[0] == 4)
@@ -479,10 +545,9 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 
 	inodes[parent_ino].st_nlink ++;
 	inodes[parent_ino].st_size += 16L;
-
 	ModifyInodeZone(parent_ino);
 
-	//printf("AddToParentDir called successfully!\n");
+	printf("AddToParentDir called successfully!\n");
     return 0;
 }
 
@@ -497,6 +562,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 		bool stop = false;
 		for(ssize_t i = 0; i < BLOCK_SIZE; i += 4)
 		{
+			printf("i is %ld\n", i);
 			unsigned int *res = (unsigned int *)(&block_bitmap->data[i]);
 			unsigned int mask = (1 << 31); int count = 0;
 			while(mask > 0)
@@ -508,30 +574,76 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 				}
 				mask >>= 1; count++;
 			}
+			printf("stop is %d\n", stop);
+			printf("count is %d\n", count);
 			if(stop) // 找到空的block了，接下来写回去
 			{
 				*res |= mask;
 				if (fseek(fp, BLOCK_SIZE * k, SEEK_SET) != 0) // 将指针移动到文件的第k块的起始位置
-					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
+					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)");
 				if (fseek(fp, i, SEEK_CUR) != 0) // 将指针相对当前位置移动 i 个字节
-					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)\n");
+					fprintf(stderr, "bitmap fseek failed! (func: DistributeBlockNo)");
 				fwrite(res, sizeof(unsigned int), 1, fp); // 已修改block位图
-				
-				// 修改inodes全局变量
-				if(is_dir)
-					inodes[ino].st_mode = __S_IFDIR | 0755;
+
+				if(inodes[ino].addr[0] == -1) // 可以使用此条件来判断是新建一个文件夹，还是为文件夹或文件拓展一个数据块
+				{
+					// 修改inodes全局变量
+					if(is_dir)
+						inodes[ino].st_mode = __S_IFDIR | 0755;
+					else
+						inodes[ino].st_mode = __S_IFREG | 0666;
+					inodes[ino].st_size = file_size;
+					inodes[ino].st_nlink = 2;
+					inodes[ino].st_ino = ino;
+					inodes[ino].addr[0] = (short int)i * 8 + (short int)count; 
+					clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
+				}
 				else
-					inodes[ino].st_mode = __S_IFREG | 0666;
-				inodes[ino].st_size = file_size;
-				inodes[ino].st_nlink = 2;
-				inodes[ino].st_ino = ino;
-				inodes[ino].addr[0] = (short int)i * 32 + (short int)count; 
-				clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
-				printf("block no distributed is %hd\n", inodes[ino].addr[0]);
+				{
+					printf("现在为文件夹拓展一个数据块\n");
+					for(int p = 1; p < 7; p++) // ToDo!!!
+					{
+						if(p >= 1 && p <= 3)
+							if(inodes[ino].addr[p] == -1)
+							{
+								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
+								printf("check4\n");
+							}
+						else if(p == 4)
+						{
+							if(inodes[ino].addr[p] == -1)
+							{
+								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
+								DistributeBlockNo(inodes[ino].st_size, ino, is_dir);
+							}
+							else
+							{
+								ssize_t *res = malloc(sizeof(ssize_t) * 5);
+								if((res = GetLastTupleByIno(ino)) == NULL)
+									fprintf(stderr, "can't get last tuple! (func: DistributeBlockNo)");
+								short int tmp = (short int)i * 8 + (short int)count; 
+								if(fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[ino].addr[p]) + (res[1] - 1L) * 2L, SEEK_SET) != 0) // 移动到存着256个short int的数据块
+									fprintf(stderr, "block zone fseek failed! (func: DistributeBlockNo)");
+								fwrite(&tmp, sizeof(short int), 1, fp);
+							}
+						}
+						else if(p == 5)
+						{
+
+						}
+						else if(p == 6)
+						{
+							
+						}
+						break;
+					}
+				}
+
+				printf("block no distributed is %hd\n", (short int)i * 8 + (short int)count);
 
 				ModifyInodeZone(ino);
 				return 0;
-			}	
+			}
 		}
 	}
 	return -1; // 已满，无法分配数据块
@@ -680,7 +792,7 @@ int DelSign(const unsigned short int parent_ino, const int index, const unsigned
 	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0], tmp_db);
 	if(inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple) == 0)
 		memset(tmp_db->data + index * sizeof(struct DirTuple), 0, sizeof(struct DirTuple));
-	else
+	else // ToDo：这里有内存重叠
 		memcpy(tmp_db->data + index * sizeof(struct DirTuple), tmp_db->data + (index + 1) * sizeof(struct DirTuple), inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple));
 	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
 	{
@@ -771,7 +883,7 @@ int GetTargetInoByPath(const char *path)
 	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
 	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
 	{
-		fprintf(stderr, "parent_dir cannot be found! (func: create_file)");
+		fprintf(stderr, "parent_dir cannot be found! (func: GetTargetInoByPath)");
 	}
 
 	unsigned short int parent_ino = parent_dir->i_num;

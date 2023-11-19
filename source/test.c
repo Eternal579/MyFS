@@ -4,6 +4,7 @@
 #include <string.h>
 #include "util.h"
 
+
 int main(){
     FilePointerInit();
     //struct DataBlock *tmp_record = malloc(sizeof(struct DataBlock));
@@ -27,12 +28,14 @@ int main(){
     // int arr[5] = {1,2,3,4,5};
     // int sz = sizeof(arr) / sizeof(int);
     // printf("sz is %d\n", sz);
-    
-    unsigned int tmp1 = 1 << 31;
-    printf("%u\n", tmp1);
-    unsigned int tmp2 = (1 << 31) + (1 << 30);
-    printf("%u\n", tmp2);
 
+    struct DataBlock *tmp_record = malloc(sizeof(struct DataBlock));
+    GetSingleDataBlock(ROOT_DIR_TUPLE_BNO, tmp_record);
+    struct DirTuple *tmp = malloc(sizeof(struct DirTuple) * 2);
+    //fseek(fp, BLOCK_SIZE * ROOT_DIR_TUPLE_BNO, SEEK_SET);
+    //fread(tmp, sizeof(struct DirTuple), 1, fp);
+    memcpy((void *)tmp + 16L, (void *)tmp_record, sizeof(struct DirTuple));
+    printf("tmp[1].f_name is %s\n", tmp[1].f_name);
 
     return 0;
 }
