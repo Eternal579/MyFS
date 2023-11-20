@@ -137,7 +137,7 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 struct DirTuple *GetMultiDirTuples(const int ino)
 {
 	// printf("call GetMultiDirTuples()\n");
-	// printf("ino = %d\n",ino);
+	printf("ino = %d\n",ino);
 
 	struct DataBlock *tuples_block = malloc(sizeof(struct DataBlock));
 	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
@@ -152,12 +152,13 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 			break;
 		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 		{
+			printf("dir_size is %ld\n", dir_size);
 			ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
 			printf("base is %ld, cur_size is %ld\n", base, cur_size);
 			printf("check1\n");
 
-			struct DirTuple * tmp = (struct DirTuple*)(tuples_block);
-			printf("tmp->f_name is %s\n", tmp->f_name);
+			// struct DirTuple * tmp = (struct DirTuple*)(tuples_block);
+			// printf("tmp->f_name is %s\n", tmp->f_name);
 
 			memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 			printf("check2\n");
@@ -170,9 +171,11 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 			ssize_t file_size = (dir_size - DIRECT_ADDRESS_SCOPE < PRIMARY_ADDRESS_SCOPE) ? dir_size - DIRECT_ADDRESS_SCOPE 
 			: PRIMARY_ADDRESS_SCOPE; // 表示1级间址存的文件的大小
 			ssize_t blocks_cnt_1 = DivideCeil(file_size, 512L); // 表示1级间址对应多少个数据块
+			printf("1级间址对应着 %ld 个数据块\n", blocks_cnt_1);
 
 			// 存着blocks_cnt_1个short int类型的数字（用于表示叶子数据块号）
 			struct DataBlock *primary_dblock = malloc(sizeof(struct DataBlock)); 
+			printf("inodes[ino].addr[4] is %hd\n", inodes[ino].addr[i]);
 			if(GetSingleDataBlock(inodes[ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock) != 0)
 			{
 				fprintf(stderr, "something wrong in primary address! (func: GetMultiDirTuples)");
@@ -180,12 +183,18 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 
 			for(ssize_t j = 0; j < blocks_cnt_1; j++)
 			{
-				short int *block_no_1 = (short int *)(primary_dblock + j * sizeof(short int));
-				if(GetSingleDataBlock(*block_no_1 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0)
+				short int *block_no_1 = (short int *)(&primary_dblock->data[j * sizeof(short int)]);
+				printf("block_no_1 is %hd\n", *block_no_1);
+				if(GetSingleDataBlock(*(block_no_1) + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 				{
+					struct DirTuple * tmp = (struct DirTuple*)(tuples_block);
+					printf("tmp->f_name is %s\n", tmp->f_name);
+
 					ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
 					memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 					base += cur_size;
+
+					printf("cur_size is %ld\n", cur_size);
 				}
 			}
 		}
@@ -207,7 +216,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 
 			for(ssize_t j = 0; j < blocks_cnt_1; j++)
 			{
-				short int *block_no_1 = (short int *)(primary_dblock + j * sizeof(short int));
+				short int *block_no_1 = (short int *)(&primary_dblock->data[j * sizeof(short int)]);
 
 				// 存着blocks_cnt_2个short int类型的数字（用于表示叶子数据块号）
 				struct DataBlock *secondary_dblock = malloc(sizeof(struct DataBlock)); 
@@ -220,8 +229,8 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 				for(ssize_t k = 0; k < blocks_cnt_2; k++)
 				{
 					// block_no_2才是叶子数据块的块号
-					short int *block_no_2 = (short int *)(secondary_dblock + k * sizeof(short int));
-					if(GetSingleDataBlock(*block_no_2 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
+					short int *block_no_2 = (short int *)(&secondary_dblock->data[k * sizeof(short int)]);
+					if(GetSingleDataBlock(*block_no_2 + ROOT_DIR_TUPLE_BNO, tuples_block) == 0) 
 					{
 						ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
 						memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
@@ -248,7 +257,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 
 			for(ssize_t j = 0; j < blocks_cnt_1; j++)
 			{
-				short int *block_no_1 = (short int *)(primary_dblock + j * sizeof(short int));
+				short int *block_no_1 = (short int *)(&primary_dblock->data[j * sizeof(short int)]);
 
 				// 存着blocks_cnt_2个short int类型的数字（用于表示叶子数据块号）
 				struct DataBlock *secondary_dblock = malloc(sizeof(struct DataBlock)); 
@@ -261,7 +270,7 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 
 				for(ssize_t k = 0; k < blocks_cnt_2; k++)
 				{
-					short int *block_no_2 = (short int *)(secondary_dblock + k * sizeof(short int));
+					short int *block_no_2 = (short int *)(&secondary_dblock->data[k * sizeof(short int)]);
 
 					// 存着blocks_cnt_3个short int类型的数字（用于表示叶子数据块号）
 					struct DataBlock *triple_dblock = malloc(sizeof(struct DataBlock)); 
@@ -275,8 +284,8 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 					for(ssize_t p = 0; p < blocks_cnt_3; p++)
 					{
 						// block_no_3才是叶子数据块的块号
-						short int *block_no_3 = (short int *)(triple_dblock + p * sizeof(short int));
-						if(GetSingleDataBlock(*block_no_3 + ROOT_DIR_TUPLE_BNO, tuples_block) != 0) 
+						short int *block_no_3 = (short int *)(&triple_dblock[p * sizeof(short int)]);
+						if(GetSingleDataBlock(*block_no_3 + ROOT_DIR_TUPLE_BNO, tuples_block) == 0) 
 						{
 							ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
 							memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
@@ -320,7 +329,7 @@ int create_file(const char *path, bool is_dir)
 	char parent_path[path_len]; // 父目录的路径
 	strncpy(parent_path, path, s + 1); 
 	parent_path[s + 1] = '\0';
-	//printf("parent_path is %s\n", parent_path);
+	printf("parent_path is %s\n", parent_path);
 
 	struct DirTuple *parent_dir = malloc(sizeof(struct DirTuple)); // 父目录项
 	if(GetSingleDirTuple(parent_path, parent_dir) != 0)
@@ -332,6 +341,7 @@ int create_file(const char *path, bool is_dir)
 	ssize_t count = inodes[parent_ino].st_size / sizeof(struct DirTuple); // 表示父文件夹中有多少个目录项
 	struct DirTuple *tuples = malloc(sizeof(struct DirTuple) * count);
 	tuples = GetMultiDirTuples(parent_ino);
+	printf("count is %ld\n", count);
 
 	char target[path_len - s];
 	strcpy(target, path + s + 1);
@@ -360,7 +370,7 @@ int create_file(const char *path, bool is_dir)
 	// 为新建文件夹的数据块创造两条默认目录项
 	if(is_dir)
 	{
-		printf("Now! create default tuples for %s, whose ino is %d\n",target, target_ino);
+		printf("Now! create default tuples for %s, whose ino is %d, and 第一个数据块块号为 %hd\n",target, target_ino, inodes[target_ino].addr[0]);
 		if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
 			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
 
@@ -377,6 +387,14 @@ int create_file(const char *path, bool is_dir)
 		default_tuple2->i_num = parent_ino;
 		memset(default_tuple2->spare, 0, sizeof(default_tuple1->spare));
 		fwrite(default_tuple2, sizeof(struct DirTuple), 1, fp);
+
+		printf("\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n");
+		if (fseek(fp, BLOCK_SIZE * ROOT_DIR_TUPLE_BNO, SEEK_SET) != 0) // 将指针移动到数据块的起始位置
+			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
+		struct DirTuple *tmp1 = malloc(sizeof(struct DirTuple));
+		fread(tmp1, sizeof(struct DirTuple), 1, fp);
+		printf("tmp1->i_num is %hd", tmp1->i_num);
+		printf("\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n");
 	}
 
 	if(AddToParentDir(parent_ino, target, target_ino) != 0) // 添加一条记录到父目录中
@@ -387,7 +405,7 @@ int create_file(const char *path, bool is_dir)
 
 short int DistributeIno(ssize_t file_size, bool is_dir)
 {
-	// printf("DistributeIno start!\n");
+	printf("DistributeIno start!\n");
 	short int ino = -1;
 
 	// 先读inode位图
@@ -421,12 +439,13 @@ short int DistributeIno(ssize_t file_size, bool is_dir)
 		}	
 	}
 
+	printf("ino is %hd\n", ino);
 	// 已分配好inode号，接下来要分配数据块
 	if(DistributeBlockNo(file_size, ino, is_dir) != 0)
 	{
 		fprintf(stderr, "error in distributing block no! (func: DistributeIno)");
 	}
-	// printf("DistributeIno called successfully!\n");
+	printf("DistributeIno called successfully!\n");
     return ino;
 }
 
@@ -443,95 +462,64 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 		if(res[1] < 32)
 		{
 			printf("res[0] = %ld, res[1] = %ld\n", res[0], res[1]);
-
-			if(res[0] == 1){
-				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
-					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
-				struct DirTuple *tmp_tuple = malloc(sizeof(struct DirTuple));
-				fread(tmp_tuple,sizeof(struct DirTuple), 1, fp);
-				printf("%s 加入父文件夹之前，第一个目录项是%s\n", target, tmp_tuple->f_name);
-			}
-
 			if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO) + res[1] * sizeof(struct DirTuple), SEEK_SET) != 0)
 				fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
-
-			struct DirTuple *new_tuple = malloc(sizeof(struct DirTuple));
-			int target_len = strlen(target);
-			int i = target_len - 1;
-			for(; i >= 0; i--)
-			{
-				if(target[i] == '.')
-					break;
-			}
-			if(i == -1) 
-			{
-				strcpy(new_tuple->f_name, target);
-				memset(new_tuple->f_ext, 0, sizeof(new_tuple->f_ext)); // 这句话千万不能忘，不然出一堆bug
-			}
-			else
-			{
-				strncpy(new_tuple->f_name, target, i);
-				strcpy(new_tuple->f_ext, target + i + 1);
-			}
-			new_tuple->i_num = target_ino;
-			memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
-			fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
-
-			if(res[0] == 1){
-				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
-					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
-				struct DirTuple *tmp_tuple = malloc(sizeof(struct DirTuple));
-				fread(tmp_tuple,sizeof(struct DirTuple), 1, fp);
-				printf("%s 加入父文件夹之后，第一个目录项是%s\n", target, tmp_tuple->f_name);
-			}
-
-			free(new_tuple);
 		}
 		else // addr[res[0]]表示的数据块被用满了，需要使用后面的了
 		{
-			printf("check1\n");
+			printf("addr[res[0]]表示的数据块被用满了，需要使用后面的了\n");
 			if(res[0] >= 0 && res[0] <= 2)
 			{
-				printf("check2\n");
-				printf("inodes[parent_ino].st_size + 16L is %ld\n", inodes[parent_ino].st_size + 16L);
+				printf("还没必要用1级间址\n");
 				DistributeBlockNo(inodes[parent_ino].st_size + 16L, parent_ino, true);
-				printf("inodes[parent_ino].addr[res[0] + 1] is %hd\n", inodes[parent_ino].addr[res[0] + 1]);
-
 				if (fseek(fp, BLOCK_SIZE * (inodes[parent_ino].addr[res[0] + 1] + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
 					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
-				
-				struct DirTuple *new_tuple = malloc(sizeof(struct DirTuple));
-				int target_len = strlen(target);
-				int i = target_len - 1;
-				for(; i >= 0; i--)
-				{
-					if(target[i] == '.')
-						break;
-				}
-				if(i == -1) 
-				{
-					strcpy(new_tuple->f_name, target);
-					memset(new_tuple->f_ext, 0, sizeof(new_tuple->f_ext)); // 这句话千万不能忘，不然出一堆bug
-				}
-				else
-				{
-					strncpy(new_tuple->f_name, target, i);
-					strcpy(new_tuple->f_ext, target + i + 1);
-				}
-				new_tuple->i_num = target_ino;
-				memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
-				fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
-				free(new_tuple);
 			}
-			else
+			else // 需要使用1级间址了
 			{
+				printf("需要使用1级间址了\n");
+				DistributeBlockNo(inodes[parent_ino].st_size + 16L, parent_ino, true);
 
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(inodes[parent_ino].addr[res[0] + 1] + ROOT_DIR_TUPLE_BNO, tmp_db);
+				short int *first_leaf_blk = (short int *)(tmp_db->data);
+				if (fseek(fp, BLOCK_SIZE * (*first_leaf_blk + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
 			}
 		}
 	}
 	else if(res[0] == 4)
 	{
+		if(res[1] < 256)
+		{
+			if(res[2] < 32)
+			{
+				printf("现在向1级间址的叶子数据块添加一个目录项\n");
+				printf("res[2] = %ld\n", res[2]);
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO, tmp_db);
+				short int *target_leaf_blk = (short int *)(&tmp_db->data[(res[1] - 1L) * sizeof(short int)]);
+				printf("target_leaf_blk is %hd\n", *target_leaf_blk);
+				if (fseek(fp, BLOCK_SIZE * ((*target_leaf_blk) + ROOT_DIR_TUPLE_BNO) + res[2] * sizeof(struct DirTuple), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+			}
+			else // 需要再扩充一个叶子数据块
+			{
+				printf("addr[4]-res[1]表示的叶子数据块被用满了，需要新弄一个叶子数据块\n");
+				DistributeBlockNo(inodes[parent_ino].st_size + 16L, parent_ino, true);
 
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(inodes[parent_ino].addr[res[0]] + ROOT_DIR_TUPLE_BNO, tmp_db);
+				short int *target_leaf_blk = (short int *)(&tmp_db->data[res[1] * sizeof(short int)]);
+				printf("target_leaf_blk is %hd\n", *target_leaf_blk);
+				if (fseek(fp, BLOCK_SIZE * ((*target_leaf_blk) + ROOT_DIR_TUPLE_BNO), SEEK_SET) != 0)
+					fprintf(stderr, "fseek failed! (func: AddToParentDir)\n");
+			}
+		}
+		else // 1级间址也用满了，需要申请二级间址
+		{
+
+		}
 	}
 	else if(res[0] == 5)
 	{
@@ -541,6 +529,30 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 	{
 
 	}
+
+	struct DirTuple *new_tuple = malloc(sizeof(struct DirTuple));
+	int target_len = strlen(target);
+	int i = target_len - 1;
+	for(; i >= 0; i--)
+	{
+		if(target[i] == '.')
+			break;
+	}
+	if(i == -1) 
+	{
+		strcpy(new_tuple->f_name, target);
+		memset(new_tuple->f_ext, 0, sizeof(new_tuple->f_ext)); // 这句话千万不能忘，不然出一堆bug
+	}
+	else
+	{
+		strncpy(new_tuple->f_name, target, i);
+		strcpy(new_tuple->f_ext, target + i + 1);
+	}
+	new_tuple->i_num = target_ino;
+	memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
+	fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
+
+	free(new_tuple);
 
 
 	inodes[parent_ino].st_nlink ++;
@@ -553,6 +565,7 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 
 int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 {
+	printf("DistributeBlockNo start!\n");
 	// 先读block位图
 	struct DataBlock *block_bitmap = malloc(sizeof(struct DataBlock));
 	for(int k = 2; k < 6; k++)
@@ -597,32 +610,49 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 					inodes[ino].st_ino = ino;
 					inodes[ino].addr[0] = (short int)i * 8 + (short int)count; 
 					clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
+					printf("为这个新建文件夹分配的第一个数据块号为 %hd\n", inodes[ino].addr[0]);
 				}
 				else
 				{
 					printf("现在为文件夹拓展一个数据块\n");
 					for(int p = 1; p < 7; p++) // ToDo!!!
 					{
+						printf("p = %d, inodes[ino].addr[p] = %hd\n", p, inodes[ino].addr[p]);
 						if(p >= 1 && p <= 3)
+						{
 							if(inodes[ino].addr[p] == -1)
 							{
 								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
 								printf("check4\n");
+								break;
 							}
+						}
 						else if(p == 4)
 						{
+							printf("$$$$$$$$$$$$$$$$$$$$$$$$$$\n");
 							if(inodes[ino].addr[p] == -1)
 							{
+								printf("分配数据块用于存储256个short int\n");
 								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
 								DistributeBlockNo(inodes[ino].st_size, ino, is_dir);
 							}
 							else
 							{
+								printf("分配数据块用于作为叶子数据块\n");
 								ssize_t *res = malloc(sizeof(ssize_t) * 5);
 								if((res = GetLastTupleByIno(ino)) == NULL)
 									fprintf(stderr, "can't get last tuple! (func: DistributeBlockNo)");
 								short int tmp = (short int)i * 8 + (short int)count; 
-								if(fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[ino].addr[p]) + (res[1] - 1L) * 2L, SEEK_SET) != 0) // 移动到存着256个short int的数据块
+								if(res[0] != 4)
+								{
+									printf("我就知道\n");
+									res[1] = 0;
+								}
+								else
+								{
+									printf("res[1] = %ld\n", res[1]);
+								}
+								if(fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[ino].addr[p]) + res[1] * 2L, SEEK_SET) != 0) // 移动到存着256个short int的数据块
 									fprintf(stderr, "block zone fseek failed! (func: DistributeBlockNo)");
 								fwrite(&tmp, sizeof(short int), 1, fp);
 							}
@@ -635,7 +665,6 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 						{
 							
 						}
-						break;
 					}
 				}
 
@@ -646,6 +675,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 			}
 		}
 	}
+	printf("DistributeBlockNo called successfully!\n");
 	return -1; // 已满，无法分配数据块
 }
 

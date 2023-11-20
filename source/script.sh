@@ -2,7 +2,7 @@
 
 cd mountDir  
 
-count=70
+count=500
 for ((i = 1; i <= count; i++)); do
     mkdir dir_$i
 done
