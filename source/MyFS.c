@@ -6,6 +6,7 @@
  */
 
 #define FUSE_USE_VERSION 31
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 #include <fuse3/fuse.h>
 #include <string.h>
@@ -90,7 +91,7 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 			printf("stbuf->st_atime is %ld\n", stbuf->st_atime);
 			printf("it's a DIR\n");
 		}
-		else if(inodes[dir_tuple->i_num].st_mode & __S_IFREG) // 是个文件
+		else if(inodes[dir_tuple->i_num].st_mode & __S_IFREG) // 是个普通文件
 		{
 			stbuf->st_mode = __S_IFREG | 0666; 
 			stbuf->st_size = inodes[dir_tuple->i_num].st_size;
@@ -108,8 +109,7 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 	{
 		res = -ENOENT;
 		printf("No such REG or DIR\n");
-	}
-		
+	}	
 	free(dir_tuple);
 
     printf("bugeater_getattr() called successfully!\n");
@@ -129,7 +129,7 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
 */
 static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 	printf("\nbugeater_readdir() called!\n");
-	printf("reading directory %s .....\n", path);
+	printf("reading directory %s\n", path);
 
     /* 先获取此path对应的目录项 */
 	struct DirTuple *path_dirtuple = malloc(sizeof(struct DirTuple));
@@ -162,7 +162,7 @@ static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 			strcat(name, tuples[i].f_ext);
 		}
 		filler(buf, name, NULL, 0, 0);
-		printf("## %s ##\n", name);
+		// printf("## %s ##\n", name);
 	}
 	free(path_dirtuple); free(tuples);
 
@@ -259,9 +259,7 @@ static int bugeater_unlink(const char *path){
 */
 static int bugeater_write (const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
     printf("\nbugeater_write start!\n");
-	printf("path is %s\n", path);
-
-	printf("buf contain %s\n", buf);
+	printf("path is %s, size is %ld, offset is %ld\n", path, size, offset);
 
 	int target_ino = GetTargetInoByPath(path);
 	if(target_ino == -1)
@@ -274,7 +272,7 @@ static int bugeater_write (const char *path, const char *buf, size_t size, off_t
 	ModifyInodeZone(target_ino);
 
 	//printf("strlen(buf) is %d ####\n", strlen(buf));
-	memcpy(tmp_db->data + offset, buf, strlen(buf));
+	memcpy(&tmp_db->data[offset], buf, strlen(buf));
 	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到数据块的起始位置
 			fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
 	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
@@ -296,15 +294,19 @@ static int bugeater_write (const char *path, const char *buf, size_t size, off_t
 */
 static int bugeater_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
     printf("\nbugeater_read start!\n");
-	printf("path is %s, size is %ld\n", path, size);
 
 	int target_ino = GetTargetInoByPath(path);
 	if(target_ino == -1)
 		return -ENONET;
 
+	size = min(size, inodes[target_ino].st_size - offset); // 防止size超过原文件大小
+	printf("path is %s, size is %ld, offset is %ld\n", path, size, offset);
+
 	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
 	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[0], tmp_db); // ToDo：这里依然只写了addr[0]
-	memcpy(buf, tmp_db->data + offset, size);
+	printf("check1\n");
+	memcpy(buf, &tmp_db->data[offset], size);
+	printf("check2\n");
 
 	printf("bugeater_read called successfully\n");
 	return size;
