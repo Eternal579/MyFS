@@ -449,7 +449,7 @@ short int DistributeIno(ssize_t file_size, bool is_dir)
     return ino;
 }
 
-int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino) // ToDo：这里没有考虑如果要使用到addr[1]后面的情况，一样，现在不想写
+int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short int target_ino) 
 {
 	printf("AddToParentDir start!\n");
 	ssize_t *res = malloc(sizeof(ssize_t) * 5);
@@ -615,7 +615,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 				else
 				{
 					printf("现在为文件夹拓展一个数据块\n");
-					for(int p = 1; p < 7; p++) // ToDo!!!
+					for(int p = 1; p < 7; p++)
 					{
 						printf("p = %d, inodes[ino].addr[p] = %hd\n", p, inodes[ino].addr[p]);
 						if(p >= 1 && p <= 3)
@@ -681,7 +681,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 
 ssize_t *GetLastTupleByIno(int ino)
 {
-	// printf("GetLastTupleByIno start!\n");
+	printf("GetLastTupleByIno start!\n");
 	off_t dir_size = inodes[ino].st_size; // 此目录的文件大小
 	off_t count = dir_size / sizeof(struct DirTuple); // 一共有多少目录项
 
@@ -695,6 +695,7 @@ ssize_t *GetLastTupleByIno(int ino)
 	else if(dir_size > DIRECT_ADDRESS_SCOPE && dir_size <= DIRECT_ADDRESS_SCOPE + PRIMARY_ADDRESS_SCOPE)
 	{
 		ssize_t file_size = dir_size - DIRECT_ADDRESS_SCOPE; // 表示1级间址存的文件的大小
+		printf("file_size is %ld\n", file_size);
 		res[0] = 4;
 		res[1] = DivideCeil(file_size, 512L);
 		res[2] = count - 4L * 32L - (res[1] - 1L) * 32L;
@@ -720,7 +721,7 @@ ssize_t *GetLastTupleByIno(int ino)
 	{
 		return NULL;
 	}
-	// printf("GetLastTupleByIno called succesfully!\n");
+	printf("GetLastTupleByIno called succesfully!\n");
 	return res;
 }
 
@@ -818,20 +819,174 @@ int DelSign(const unsigned short int parent_ino, const int index, const unsigned
 	// printf("parent_ino is %hu, index is %d\n", parent_ino, index);
 
 	// 根据parent_ino来删除第index的目录项，（注意！需要把后面的目录项移到前面来） ToDo: 只考虑了最简单的只使用addr[0]的情况
-	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
-	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0], tmp_db);
-	if(inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple) == 0)
-		memset(tmp_db->data + index * sizeof(struct DirTuple), 0, sizeof(struct DirTuple));
-	else // ToDo：这里有内存重叠
-		memcpy(tmp_db->data + index * sizeof(struct DirTuple), tmp_db->data + (index + 1) * sizeof(struct DirTuple), inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple));
-	if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0]), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+	int start;
+	if(index < 4 * 32)
 	{
-        fprintf(stderr, "fseek failed! (func: DelSign)\n");
-		return -1;
+		start = index / 32;
 	}
-	fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
-	GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[0], tmp_db);
+	else if(index >= 4 * 32 && index < (4 + 256) * 32)
+	{
+		start = 4;
+	}
 
+	if(inodes[parent_ino].st_size - (index + 1) * sizeof(struct DirTuple) == 0) // 如果是最后一个目录项
+	{
+		if(start != 4)
+		{
+			struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+			GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[start], tmp_db);
+			memset(&tmp_db->data[(index % 32) * sizeof(struct DirTuple)], 0, sizeof(struct DirTuple));
+			if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[start]), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+			{
+				fprintf(stderr, "fseek failed! (func: DelSign)\n");
+				return -1;
+			}
+			fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+		}
+		else
+		{
+			printf("\n@@@@@@@@@@@@@\n");
+			ssize_t *res = malloc(sizeof(ssize_t) * 5);
+			res = GetLastTupleByIno(parent_ino);
+
+			struct DataBlock *tmp_db_1 = malloc(sizeof(struct DataBlock));
+			GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[start], tmp_db_1);
+			short int *leaf_blk_no = (short int *)(&tmp_db_1->data[(res[1] - 1L) * sizeof(short int)]);
+			printf("inodes[parent_ino].addr[start] is %hd\n", inodes[parent_ino].addr[start]);
+			printf("res[1] = %ld\n", res[1]);
+			printf("leaf_blk_no is %hd\n", *leaf_blk_no);
+			printf("index is %d\n", index);
+
+			struct DataBlock *leaf_blk = malloc(sizeof(struct DataBlock));
+			GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, leaf_blk);
+			memset(&leaf_blk->data[(index % 32) * sizeof(struct DirTuple)], 0, sizeof(struct DirTuple));
+			if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+			{
+				fprintf(stderr, "fseek failed! (func: DelSign)\n");
+				return -1;
+			}
+			fwrite(leaf_blk, sizeof(struct DataBlock), 1, fp);
+		}
+	}
+	else 
+	{
+		printf("现在删除的是中间的目录项\n");
+		printf("index = %d\n", index);
+		bool flag = false;
+		ssize_t *res = malloc(sizeof(ssize_t) * 5);
+		res = GetLastTupleByIno(parent_ino);
+
+		for(int k = start; k <= res[0]; k++)
+		{
+			if(k != 4)
+			{
+				printf("这是k != 4的情况\n");
+				struct DataBlock *tmp_db_1 = malloc(sizeof(struct DataBlock));
+				if(!flag) // 如果flag为false表示从index开始覆盖，如果flag为true表示从开头覆盖
+				{
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k], tmp_db_1);
+					
+					if(index % 32 != 31) // 如果是当前数据块最后一个目录项，则不需要执行以下操作
+						memcpy(&tmp_db_1->data[(index % 32) * sizeof(struct DirTuple)], &tmp_db_1->data[((index % 32) + 1) * sizeof(struct DirTuple)], BLOCK_SIZE - ((index % 32) + 1) * sizeof(struct DirTuple));
+
+					flag = true;
+				}
+				else
+				{
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k], tmp_db_1);
+					memcpy(&tmp_db_1->data[0], &tmp_db_1->data[sizeof(struct DirTuple)], BLOCK_SIZE - sizeof(struct DirTuple));
+				}
+
+				// 处理数据块的最后一个目录项
+				if(k + 1 != 4) 
+				{
+					struct DataBlock *tmp_db_2 = malloc(sizeof(struct DataBlock));
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k + 1], tmp_db_2);
+					memcpy(&tmp_db_1->data[31 * sizeof(struct DirTuple)], &tmp_db_2->data[0], sizeof(struct DirTuple));
+				}
+				else
+				{
+					struct DataBlock *tmp_db_2 = malloc(sizeof(struct DataBlock));
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k + 1], tmp_db_2);
+					short int *first_leaf_blk_no = (short int *)(&tmp_db_2->data[0]);
+
+					struct DataBlock *first_leaf_blk = malloc(sizeof(struct DataBlock));
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *first_leaf_blk_no, first_leaf_blk);
+					memcpy(&tmp_db_1->data[31 * sizeof(struct DirTuple)], &first_leaf_blk->data[0], sizeof(struct DirTuple));
+				}
+
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k]), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+				{
+					fprintf(stderr, "fseek failed! (func: DelSign)\n");
+					return -1;
+				}
+				fwrite(tmp_db_1, sizeof(struct DataBlock), 1, fp);
+			}
+			else if(k == 4)
+			{
+				printf("这是k == 4的情况\n");
+				printf("inodes[parent_ino].addr[4] = %hd\n", inodes[parent_ino].addr[k]);
+				struct DataBlock *primary_blk = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[parent_ino].addr[k], primary_blk);
+				int primary_no = 0;
+				if(index >= 128)
+					primary_no = (index - 128) / 32;
+
+				for(; primary_no < res[1]; primary_no++)
+				{
+					printf("primary_no = %d\n", primary_no);
+					short int *leaf_blk_no = (short int *)(&primary_blk->data[primary_no * sizeof(short int)]);
+					printf("*leaf_blk_no = %hd\n", *leaf_blk_no);
+
+					struct DataBlock *leaf_blk = malloc(sizeof(struct DataBlock));
+					if(!flag) // 如果flag为false表示从index开始覆盖，如果flag为true表示从开头覆盖
+					{
+						printf("从index开始覆盖\n");
+						GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, leaf_blk);
+						
+						struct DirTuple *wbbb = (struct DirTuple *)(&leaf_blk->data[0]);
+						printf("wbbb->f_name is %s\n", wbbb->f_name);
+						
+						if(index % 32 != 31) // 如果是当前数据块最后一个目录项，则不需要执行以下操作
+							memcpy(&leaf_blk->data[(index % 32) * sizeof(struct DirTuple)], &leaf_blk->data[((index % 32) + 1) * sizeof(struct DirTuple)], BLOCK_SIZE - ((index % 32) + 1) * sizeof(struct DirTuple));
+
+						flag = true;
+					}
+					else
+					{
+						GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, leaf_blk);
+						memcpy(&leaf_blk->data[0], &leaf_blk->data[sizeof(struct DirTuple)], BLOCK_SIZE - sizeof(struct DirTuple));
+					}
+
+					// 处理数据块的最后一个目录项
+					if(primary_no + 1 < 256)
+					{
+						short int *leaf_blk_no_2 = (short int *)(&primary_blk->data[(primary_no + 1) * sizeof(short int)]);
+						
+						struct DataBlock *leaf_blk_2 = malloc(sizeof(struct DataBlock));
+						GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no_2, leaf_blk_2);
+						memcpy(&leaf_blk->data[31 * sizeof(struct DirTuple)], &leaf_blk_2->data[0], sizeof(struct DirTuple));
+					}
+					else
+					{
+
+					}
+
+					if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0) // 将指针移动到文件的相应的起始位置 
+					{
+						fprintf(stderr, "fseek failed! (func: DelSign)\n");
+						return -1;
+					}
+					fwrite(leaf_blk, sizeof(struct DataBlock), 1, fp);
+				}	
+			}
+			else
+			{
+
+			}
+		}
+	}
+	
 	// 移除target的inode和block
 	SetInoMap(target_ino, false);
 	for(int i = 0; i < 7; i++)
