@@ -353,8 +353,38 @@ int create_file(const char *path, bool is_dir)
 		}
 		if(strcmp(name, target) == 0)
 		{
-			return RDEXISTS;
+			return -EEXIST;
 		}
+	}
+	
+	// 检查命名是否规范
+	char f_name[path_len]; char f_ext[path_len];
+	int target_len = strlen(target);
+	int i = target_len - 1;
+	for(; i >= 0; i--)
+	{
+		if(target[i] == '.')
+			break;
+	}
+	if(i == -1) 
+	{
+		strcpy(f_name, target);
+		memset(f_ext, 0, sizeof(f_ext));
+	}
+	else
+	{
+		strncpy(f_name, target, i);
+		strcpy(f_ext, target + i + 1);
+	}
+	if(is_dir)
+	{
+		if(strlen(f_name) > 8)
+			return -ENAMETOOLONG;
+	}	
+	else
+	{
+		if(strlen(f_name) > 8 || strlen(f_ext) > 3)
+			return -ENAMETOOLONG;
 	}
 
 	// 可以确认regular或dir均不在父文件夹下
@@ -610,6 +640,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 							if(inodes[ino].addr[p] == -1)
 							{
 								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
+								// printf("inodes[ino].addr[p] = %hd\n", inodes[ino].addr[p]);
 								// printf("check4\n");
 								break;
 							}
@@ -654,13 +685,15 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 						}
 					}
 				}
-				// printf("block no distributed is %hd\n", (short int)i * 8 + (short int)count);
-
+				printf("block no distributed is %hd\n", (short int)i * 8 + (short int)count);
+				
+				free(block_bitmap);
 				ModifyInodeZone(ino);
 				return 0;
 			}
 		}
 	}
+	free(block_bitmap);
 	// printf("DistributeBlockNo called successfully!\n");
 	return -1; // 已满，无法分配数据块
 }
@@ -749,7 +782,17 @@ int remove_file(const char*parent_path, const char *target, bool is_dir)
 	// printf("check3\n");
 	// printf("is_exist is %d\n", is_exist);
 	if(!is_exist)
-		return RDNOEXISTS;
+		return -ENOENT;
+	if(is_dir)
+	{
+		if(!S_ISDIR(inodes[target_ino].st_mode))
+			return -ENOTDIR;
+	}
+	else
+	{
+		if(S_ISDIR(inodes[target_ino].st_mode))
+			return -EISDIR;
+	}
 
 	if(is_dir) // 文件夹的话需要递归删除
 	{
@@ -1078,4 +1121,166 @@ int GetTargetInoByPath(const char *path)
 	}
 
 	return target_ino;
+}
+
+int write_file(const char *buf, size_t size, off_t offset, int target_ino)
+{
+	if(size <= 512L)
+	{
+		int k;
+		if(inodes[target_ino].st_size <= DIRECT_ADDRESS_SCOPE)
+			k = (inodes[target_ino].st_size - 1) / 512; 
+		else if(inodes[target_ino].st_size <= PRIMARY_ADDRESS_SCOPE)
+			k = 4;
+		
+		if(k >= 0 && k <= 3 && inodes[target_ino].addr[k] != -1)
+		{
+			ssize_t cur_size = inodes[target_ino].st_size - k * 512L;
+			if(512L - cur_size >= size) // 剩下的空间可以写入size大小的数据
+			{
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k], tmp_db);
+				memcpy(&tmp_db->data[offset % 512], buf, size);
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k]), SEEK_SET) != 0)
+					fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+				fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+			}
+			else
+			{
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k], tmp_db);
+				memcpy(&tmp_db->data[offset % 512], buf, 512L - cur_size); // 把能写进去的先写进去
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k]), SEEK_SET) != 0)
+					fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+				fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+
+				DistributeBlockNo(inodes[target_ino].st_size, target_ino, false); // 为target文件新建一个数据块
+				if(k < 3)
+				{
+					struct DataBlock *tmp_db_2 = malloc(sizeof(struct DataBlock));
+					// printf("inodes[target_ino].addr[k + 1] is %hd\n", inodes[target_ino].addr[k + 1]);
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k + 1], tmp_db_2);
+					memcpy(&tmp_db_2->data[0], &buf[512L - cur_size], size - (512L - cur_size)); // 写入还没写进去的数据
+					if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k + 1]), SEEK_SET) != 0)
+						fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+					fwrite(tmp_db_2, sizeof(struct DataBlock), 1, fp);
+				}
+				else
+				{
+					// printf("开始使用1级间址\n");
+					struct DataBlock *primary_blk = malloc(sizeof(struct DataBlock));
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k + 1], primary_blk);
+					short int *leaf_blk_no = (short int *)(&primary_blk->data[0]);
+					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, tmp_db);
+					memcpy(&tmp_db->data[0], &buf[512L - cur_size], size - (512L - cur_size)); // 写入还没写进去的数据
+					if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0)
+						fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+					fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+				}
+			}
+		}
+		else if(k == 4 && inodes[target_ino].addr[k] != -1)
+		{
+			// printf("继续向1级间址里写\n");
+			ssize_t *res = malloc(sizeof(ssize_t) * 5);
+			res = GetLastTupleByIno(target_ino);
+			ssize_t cur_size = inodes[target_ino].st_size - (k + res[1] - 1) * 512L;
+
+			if(512L - cur_size >= size) // 剩下的空间可以写入size大小的数据
+			{
+				// printf("写的下\n");
+				struct DataBlock *primary_blk = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k], primary_blk);
+				short int *leaf_blk_no = (short int *)(&primary_blk->data[(res[1] - 1) * 2L]);
+				// printf("*leaf_blk_no = %hd\n", *leaf_blk_no);
+				
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, tmp_db);
+				memcpy(&tmp_db->data[offset % 512], buf, size);
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0)
+					fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+				fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+			}
+			else
+			{
+				// printf("写不下\n");
+				struct DataBlock *primary_blk = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k], primary_blk);
+				short int *leaf_blk_no = (short int *)(&primary_blk->data[(res[1] - 1) * 2L]);
+				// printf("*leaf_blk_no = %hd\n", *leaf_blk_no);
+				
+				struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, tmp_db);
+				memcpy(&tmp_db->data[offset % 512], buf, 512L - cur_size);
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0)
+					fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+				fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+
+				DistributeBlockNo(inodes[target_ino].st_size, target_ino, false); // 为target文件新建一个数据块
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k], primary_blk);
+				leaf_blk_no = (short int *)(&primary_blk->data[res[1] * 2L]);
+				// printf("*leaf_blk_no = %hd\n", *leaf_blk_no);
+
+				GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, tmp_db);
+				memcpy(&tmp_db->data[0], &buf[512L - cur_size], size - (512L - cur_size)); // 写入还没写进去的数据
+				if (fseek(fp, BLOCK_SIZE * (ROOT_DIR_TUPLE_BNO + *leaf_blk_no), SEEK_SET) != 0)
+					fprintf(stderr, "new block fseek failed! (func: bugeater_write)\n");
+				fwrite(tmp_db, sizeof(struct DataBlock), 1, fp);
+			}
+		}
+	}
+	else
+	{
+		ssize_t tmp_size = 0L;
+		while(tmp_size != size)
+		{
+			ssize_t writen_size = size - tmp_size <= 512L ? size - tmp_size : 512L;
+			char *writen = malloc(sizeof(char) * writen_size);
+			strncpy(writen, &buf[tmp_size], writen_size);		
+			writen[writen_size] = '\0';
+			write_file(writen, writen_size, 0L, target_ino);
+			tmp_size += writen_size;
+			inodes[target_ino].st_size += writen_size;
+		}
+	}
+	return 0;
+}
+
+int read_file(char *buf, size_t size, int target_ino)
+{
+	struct DataBlock *tmp_db = malloc(sizeof(struct DataBlock));
+	off_t base = 0; off_t file_size = inodes[target_ino].st_size;
+	for(int i = 0; i < 7; i++)
+	{
+		if(inodes[target_ino].addr[i] == -1)
+			break;
+		if(base == size)
+			break;
+		if(i >= 0 && i <= 3 && GetSingleDataBlock(inodes[target_ino].addr[i] + ROOT_DIR_TUPLE_BNO, tmp_db) == 0)
+		{
+			ssize_t cur_size = (file_size - base < 512) ? file_size - base : 512; // 用于表示当前的数据块的文件大小
+			memcpy(buf + base, &tmp_db->data[0], cur_size);
+			base += cur_size; 
+		}
+		else if(i == 4) 
+		{ 
+			ssize_t primary_size = (file_size - DIRECT_ADDRESS_SCOPE < PRIMARY_ADDRESS_SCOPE) ? file_size - DIRECT_ADDRESS_SCOPE 
+			: PRIMARY_ADDRESS_SCOPE; 
+			ssize_t blocks_cnt_1 = DivideCeil(primary_size, 512L);
+
+			struct DataBlock *primary_dblock = malloc(sizeof(struct DataBlock)); 
+			GetSingleDataBlock(inodes[target_ino].addr[i] + ROOT_DIR_TUPLE_BNO, primary_dblock);
+			for(ssize_t j = 0; j < blocks_cnt_1; j++)
+			{
+				short int *block_no_1 = (short int *)(&primary_dblock->data[j * sizeof(short int)]);
+				if(GetSingleDataBlock(*(block_no_1) + ROOT_DIR_TUPLE_BNO, tmp_db) == 0)
+				{
+					ssize_t cur_size = (file_size - base < 512) ? file_size - base : 512; // 用于表示当前的数据块的文件大小
+					memcpy(buf + base, &tmp_db->data[0], cur_size);
+					base += cur_size;
+				}
+			}
+		}
+	}
+	return 0;
 }

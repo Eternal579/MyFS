@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
 
 // 超级块结构
 struct SuperBlock {
@@ -79,3 +80,5 @@ void SetInoMap(const unsigned short int ino, bool status);
 void SetBnoMap(const unsigned short int bno, bool status);
 void ModifyInodeZone(int ino); // 修改inode区
 int GetTargetInoByPath(const char *path); // 根据path提取出target的inode号，在write和read中都有用
+int write_file(const char *buf, size_t size, off_t offset, int target_ino);
+int read_file(char *buf, size_t size, int target_ino);
