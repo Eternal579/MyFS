@@ -62,7 +62,6 @@ int main(){
     inode_table[0].st_gid = 768288;
     inode_table[0].st_size = 16; // 刚开始只有一个指向自身的目录项，故占16字节
     clock_gettime(CLOCK_REALTIME, &inode_table[0].st_atim); // 获取从UTC时间1970年1月1日零时开始经过的秒数
-    printf("%ld\n", inode_table[0].st_atim.tv_sec);
     inode_table[0].addr[0] = 0; // 根目录的数据块号为0
     fwrite(inode_table,sizeof(inode_table),1,fp);
     printf("initiate inode success!\n");

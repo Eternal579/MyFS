@@ -11,6 +11,7 @@
 #include <fuse3/fuse.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "util.h"
 
@@ -125,7 +126,7 @@ static int bugeater_getattr(const char *path, struct stat *stbuf)
  * tips：
  * 根据官方注释，offset需要看fuse怎么实现的，有的版本会直接忽略offset，有的则不会
 */
-static int *bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
+static int bugeater_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 	printf("\nbugeater_readdir() called!\n");
 	printf("reading directory %s\n", path);
 

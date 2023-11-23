@@ -184,9 +184,6 @@ struct DirTuple *GetMultiDirTuples(const int ino)
 				// printf("block_no_1 is %hd\n", *block_no_1);
 				if(GetSingleDataBlock(*(block_no_1) + ROOT_DIR_TUPLE_BNO, tuples_block) == 0)
 				{
-					struct DirTuple * tmp = (struct DirTuple*)(tuples_block);
-					// printf("tmp->f_name is %s\n", tmp->f_name);
-
 					ssize_t cur_size = (dir_size - base < 512) ? dir_size - base : 512; // 用于表示当前的数据块的文件大小
 					memcpy((void *)tuples + base, (void *)tuples_block, cur_size);
 					base += cur_size;
@@ -340,6 +337,7 @@ int create_file(const char *path, bool is_dir)
 	tuples = GetMultiDirTuples(parent_ino);
 	// printf("count is %ld\n", count);
 
+	// 检查是否已存在
 	char target[path_len - s];
 	strcpy(target, path + s + 1);
 	for(ssize_t i = 0; i < count; i++)
@@ -420,6 +418,7 @@ int create_file(const char *path, bool is_dir)
 	{
 		fprintf(stderr, "something wrong when adding target to parent dir! (func: create_file)");
 	}
+	return 0;
 }
 
 short int DistributeIno(ssize_t file_size, bool is_dir)
@@ -475,7 +474,6 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 	if((res = GetLastTupleByIno(parent_ino)) == NULL)
 		fprintf(stderr, "can't get last tuple! (func: AddToParentDir)");
 	
-	struct DataBlock *dblock = malloc(sizeof(struct DataBlock));
 	if(res[0] >= 0 && res[0] <= 3)
 	{
 		if(res[1] < 32)
@@ -625,7 +623,8 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 					inodes[ino].st_size = file_size;
 					inodes[ino].st_nlink = 2;
 					inodes[ino].st_ino = ino;
-					inodes[ino].addr[0] = (short int)i * 8 + (short int)count; 
+					inodes[ino].addr[0] = (short int)i * 8 + (short int)count + (short int)(k -2) * 4096; 
+					printf("ino = %d, inodes[ino].addr[0] = %hd\n", ino, inodes[ino].addr[0]);
 					clock_gettime(CLOCK_REALTIME, &inodes[ino].st_atim);
 					// printf("为这个新建文件夹分配的第一个数据块号为 %hd\n", inodes[ino].addr[0]);
 				}
@@ -639,7 +638,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 						{
 							if(inodes[ino].addr[p] == -1)
 							{
-								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
+								inodes[ino].addr[p] = (short int)i * 8 + (short int)count + (short int)(k -2) * 4096; 
 								// printf("inodes[ino].addr[p] = %hd\n", inodes[ino].addr[p]);
 								// printf("check4\n");
 								break;
@@ -651,7 +650,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 							if(inodes[ino].addr[p] == -1)
 							{
 								// printf("分配数据块用于存储256个short int\n");
-								inodes[ino].addr[p] = (short int)i * 8 + (short int)count; 
+								inodes[ino].addr[p] = (short int)i * 8 + (short int)count + (short int)(k -2) * 4096; 
 								DistributeBlockNo(inodes[ino].st_size, ino, is_dir);
 							}
 							else
@@ -660,7 +659,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 								ssize_t *res = malloc(sizeof(ssize_t) * 5);
 								if((res = GetLastTupleByIno(ino)) == NULL)
 									fprintf(stderr, "can't get last tuple! (func: DistributeBlockNo)");
-								short int tmp = (short int)i * 8 + (short int)count; 
+								short int tmp = (short int)i * 8 + (short int)count + (short int)(k -2) * 4096; 
 								if(res[0] != 4)
 								{
 									// printf("我就知道\n");
@@ -685,7 +684,7 @@ int DistributeBlockNo(ssize_t file_size, int ino, bool is_dir)
 						}
 					}
 				}
-				printf("block no distributed is %hd\n", (short int)i * 8 + (short int)count);
+				printf("block no distributed is %hd\n", (short int)i * 8 + (short int)count + (short int)(k -2) * 4096);
 				
 				free(block_bitmap);
 				ModifyInodeZone(ino);
@@ -968,9 +967,6 @@ int DelSign(const unsigned short int parent_ino, const int index, const unsigned
 						// printf("从index开始覆盖\n");
 						GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + *leaf_blk_no, leaf_blk);
 						
-						struct DirTuple *wbbb = (struct DirTuple *)(&leaf_blk->data[0]);
-						// printf("wbbb->f_name is %s\n", wbbb->f_name);
-						
 						if(index % 32 != 31) // 如果是当前数据块最后一个目录项，则不需要执行以下操作
 							memcpy(&leaf_blk->data[(index % 32) * sizeof(struct DirTuple)], &leaf_blk->data[((index % 32) + 1) * sizeof(struct DirTuple)], BLOCK_SIZE - ((index % 32) + 1) * sizeof(struct DirTuple));
 
@@ -1024,6 +1020,10 @@ int DelSign(const unsigned short int parent_ino, const int index, const unsigned
 	// 父文件夹的大小也要减小16
 	inodes[parent_ino].st_size -= 16L;
 	ModifyInodeZone(parent_ino);
+
+	// 因为在创建文件夹时我用inodes[target_ino].addr[0]来判断是新建文件夹还是为已有文件夹新增数据块，所以在这里要消除这个影响
+	inodes[target_ino].addr[0] = -1;
+	ModifyInodeZone(target_ino);
 
 	//printf("DelSign called successfully!\n");
 	return 0;
@@ -1102,7 +1102,6 @@ int GetTargetInoByPath(const char *path)
 
 	char target[path_len - s];
 	strcpy(target, path + s + 1);
-	bool is_exist = false;
 	for(ssize_t i = 0; i < count; i++)
 	{
 		char name[16];
@@ -1114,7 +1113,6 @@ int GetTargetInoByPath(const char *path)
 		}
 		if(strcmp(name, target) == 0)
 		{
-			is_exist = true;
 			target_ino = tuples[i].i_num;
 			break;
 		}
@@ -1167,7 +1165,6 @@ int write_file(const char *buf, size_t size, off_t offset, int target_ino)
 				}
 				else
 				{
-					// printf("开始使用1级间址\n");
 					struct DataBlock *primary_blk = malloc(sizeof(struct DataBlock));
 					GetSingleDataBlock(ROOT_DIR_TUPLE_BNO + inodes[target_ino].addr[k + 1], primary_blk);
 					short int *leaf_blk_no = (short int *)(&primary_blk->data[0]);
@@ -1181,7 +1178,6 @@ int write_file(const char *buf, size_t size, off_t offset, int target_ino)
 		}
 		else if(k == 4 && inodes[target_ino].addr[k] != -1)
 		{
-			// printf("继续向1级间址里写\n");
 			ssize_t *res = malloc(sizeof(ssize_t) * 5);
 			res = GetLastTupleByIno(target_ino);
 			ssize_t cur_size = inodes[target_ino].st_size - (k + res[1] - 1) * 512L;
@@ -1229,12 +1225,14 @@ int write_file(const char *buf, size_t size, off_t offset, int target_ino)
 			}
 		}
 	}
-	else
+	else // size大于512
 	{
 		ssize_t tmp_size = 0L;
 		while(tmp_size != size)
 		{
-			ssize_t writen_size = size - tmp_size <= 512L ? size - tmp_size : 512L;
+			// writen_size表示要写入的部分的大小
+			ssize_t writen_size = size - tmp_size <= 512L ? size - tmp_size : 512L; 
+			// writen表示要写入的数据
 			char *writen = malloc(sizeof(char) * writen_size);
 			strncpy(writen, &buf[tmp_size], writen_size);		
 			writen[writen_size] = '\0';
