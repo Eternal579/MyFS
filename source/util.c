@@ -97,10 +97,11 @@ int GetSingleDirTuple(const char *path, struct DirTuple *dir_tuple)
 				}
 				else // 当前目录项有后缀名，需要拼接
 				{
-					char *integral_name = (char *)malloc(12 * sizeof(char));
-					strncpy(integral_name, dir_tuple->f_name, 8);
+					char *integral_name = (char *)malloc(15 * sizeof(char));
+					strcpy(integral_name, dir_tuple->f_name);
 					strcat(integral_name, ".");
 					strcat(integral_name, dir_tuple->f_ext);
+					// printf("integral_name = %s\n", integral_name);
 					if(strcmp(integral_name, target) == 0) // 找到target了
 					{
 						// 修改cur_path
@@ -372,6 +373,7 @@ int create_file(const char *path, bool is_dir)
 	else
 	{
 		strncpy(f_name, target, i);
+		f_name[i] = '\0';
 		strcpy(f_ext, target + i + 1);
 	}
 	if(is_dir)
@@ -400,14 +402,14 @@ int create_file(const char *path, bool is_dir)
 			fprintf(stderr, "new block fseek failed! (func: DistributeBlockNo)\n");
 
 		struct DirTuple *default_tuple1 = malloc(sizeof(struct DirTuple));
-		strncpy(default_tuple1->f_name, ".", 8);
+		strcpy(default_tuple1->f_name, ".");
 		memset(default_tuple1->f_ext, 0, sizeof(default_tuple1->f_ext));
 		default_tuple1->i_num = target_ino;
 		memset(default_tuple1->spare, 0, sizeof(default_tuple1->spare));
 		fwrite(default_tuple1, sizeof(struct DirTuple), 1, fp);
 
 		struct DirTuple *default_tuple2 = malloc(sizeof(struct DirTuple));
-		strncpy(default_tuple2->f_name, "..", 8);
+		strcpy(default_tuple2->f_name, "..");
 		memset(default_tuple2->f_ext, 0, sizeof(default_tuple1->f_ext));
 		default_tuple2->i_num = parent_ino;
 		memset(default_tuple2->spare, 0, sizeof(default_tuple1->spare));
@@ -563,8 +565,11 @@ int AddToParentDir(unsigned short int parent_ino, char *target, unsigned short i
 	else
 	{
 		strncpy(new_tuple->f_name, target, i);
+		new_tuple->f_name[i] = '\0';
 		strcpy(new_tuple->f_ext, target + i + 1);
 	}
+	// printf("new_tuple->f_name is %s\n", new_tuple->f_name);
+	// printf("new_tuple->f_ext is %s\n", new_tuple->f_ext);
 	new_tuple->i_num = target_ino;
 	memset(new_tuple->spare, 0, sizeof(new_tuple->spare));
 	fwrite(new_tuple, sizeof(struct DirTuple), 1, fp);
