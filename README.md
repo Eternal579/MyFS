@@ -8,3 +8,10 @@ make
 mkdir mountDir
 ./MyFS -f mountDir
 ```
+## 支持的命令
+- ls
+- mkdir
+- echo
+- cat
+- rmdir
+- unlink
